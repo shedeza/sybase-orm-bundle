@@ -13,10 +13,10 @@ jobs:
       fail-fast: false
       matrix:
         php-version: ['8.1', '8.2', '8.3', '8.4']
-        symfony: ['6.*', '7.*', '8.*']
+        symfony: ['6.*', '7.*']
         exclude:
           - php-version: '8.1'
-            symfony: '8.*'
+            symfony: '7.*'
 
     name: PHP ${{ matrix.php-version }} / Symfony ${{ matrix.symfony }}
 
@@ -33,7 +33,7 @@ jobs:
 
       - name: Constrain Symfony version
         run: |
-          composer require --no-update symfony/framework-bundle:${{ matrix.symfony }} symfony/console:${{ matrix.symfony }}
+          composer require --no-update symfony/framework-bundle:${{ matrix.symfony }} symfony/console:${{ matrix.symfony }} symfony/http-foundation:${{ matrix.symfony }} symfony/http-kernel:${{ matrix.symfony }}
 
       - name: Install dependencies
         run: composer update --no-interaction --prefer-dist --prefer-stable
