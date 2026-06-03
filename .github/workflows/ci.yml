@@ -33,7 +33,7 @@ jobs:
 
       - name: Constrain Symfony version
         run: |
-          composer require --no-update symfony/framework-bundle:${{ matrix.symfony }} symfony/console:${{ matrix.symfony }}
+          composer require --no-update symfony/framework-bundle:${{ matrix.symfony }} symfony/console:${{ matrix.symfony }} symfony/http-foundation:${{ matrix.symfony }} symfony/http-kernel:${{ matrix.symfony }}
 
       - name: Install dependencies
         run: composer update --no-interaction --prefer-dist --prefer-stable
