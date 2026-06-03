@@ -115,10 +115,6 @@ Additional services registered without interface aliases:
 
 Entity repositories are automatically autowired via the `RepositoryAutowiringCompilerPass`.
 
-## Upgrading from v2.x
-
-If you are upgrading from the monolithic `shedeza/sybase-orm` v2.x package, see [MIGRATION.md](../../MIGRATION.md) for a step-by-step guide covering Composer dependency changes and namespace updates.
-
 ## License
 
 MIT
