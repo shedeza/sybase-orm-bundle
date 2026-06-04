@@ -4,118 +4,334 @@
 
 ---
 
-## EntityManager
+## Enfoque basado en Repositorios
 
-El `EntityManager` es el servicio principal para interactuar con la base de datos. Se inyecta automáticamente en cualquier servicio Symfony a través de su interfaz:
+El acceso a datos se realiza exclusivamente a través de **repositorios específicos** para cada entidad. Cada repositorio extiende `EntityRepository`, que proporciona todos los métodos CRUD y de consulta necesarios. Los servicios de negocio nunca interactúan directamente con el `EntityManager`.
+
+Este patrón ofrece:
+- **Separación de responsabilidades** — la lógica de acceso a datos queda aislada
+- **Herencia de métodos base** — `find`, `findAll`, `save`, `delete`, etc. vienen listos
+- **Reutilización** — los métodos del repositorio se comparten entre servicios
+- **Testabilidad** — se puede mockear el repositorio fácilmente en tests unitarios
+
+## Definir la Entidad
 
 ```php
+<?php
+// src/Entity/Product.php
+
+namespace App\Entity;
+
+use App\Repository\ProductRepository;
+use SybaseORM\Mapping\Entity;
+use SybaseORM\Mapping\Column;
+use SybaseORM\Mapping\Id;
+
+#[Entity(table: 'products', repositoryClass: ProductRepository::class)]
+class Product
+{
+    #[Id]
+    #[Column(name: 'id', type: 'int')]
+    private ?int $id = null;
+
+    #[Column(name: 'name', type: 'string')]
+    private string $name;
+
+    #[Column(name: 'price', type: 'decimal')]
+    private float $price;
+
+    #[Column(name: 'active', type: 'bool')]
+    private bool $active = true;
+
+    public function getId(): ?int { return $this->id; }
+    public function getName(): string { return $this->name; }
+    public function setName(string $name): void { $this->name = $name; }
+    public function getPrice(): float { return $this->price; }
+    public function setPrice(float $price): void { $this->price = $price; }
+    public function isActive(): bool { return $this->active; }
+    public function setActive(bool $active): void { $this->active = $active; }
+}
+```
+
+## Crear el Repositorio
+
+Los repositorios extienden `EntityRepository` y pasan la clase de entidad al constructor padre:
+
+```php
+<?php
+// src/Repository/ProductRepository.php
+
+namespace App\Repository;
+
+use App\Entity\Product;
 use SybaseORM\ORM\EntityManagerInterface;
+use SybaseORM\ORM\EntityRepository;
+
+class ProductRepository extends EntityRepository
+{
+    public function __construct(EntityManagerInterface $entityManager)
+    {
+        parent::__construct($entityManager, Product::class);
+    }
+
+    // Métodos específicos del dominio:
+
+    public function findActive(): array
+    {
+        return $this->findBy(['active' => true]);
+    }
+
+    public function findByCategory(int $categoryId): array
+    {
+        return $this->findBy(['category_id' => $categoryId]);
+    }
+
+    public function findExpensive(float $minPrice): array
+    {
+        return $this->query(
+            'SELECT e FROM Product e WHERE e.price >= :min AND e.active = :active',
+            ['min' => $minPrice, 'active' => true]
+        );
+    }
+}
+```
+
+> **Nota:** No necesitas implementar `find()`, `findAll()`, `findBy()`, `save()`, `delete()`, etc. — todos vienen heredados de `EntityRepository`.
+
+## Métodos Heredados de EntityRepository
+
+Al extender `EntityRepository`, tu repositorio obtiene automáticamente:
+
+| Método | Descripción |
+|--------|-------------|
+| `find($id)` | Busca por clave primaria |
+| `findOrFail($id)` | Busca por clave primaria o lanza excepción |
+| `findAll()` | Obtiene todas las entidades |
+| `findBy($criteria, $orderBy, $limit, $offset)` | Busca por criterios con orden y paginación |
+| `findOneBy($criteria)` | Busca una entidad por criterios |
+| `findOneByOrFail($criteria)` | Busca una o lanza excepción |
+| `save($entity)` | Persiste y hace flush |
+| `saveMany($entities)` | Persiste múltiples entidades en una transacción |
+| `delete($entity)` | Elimina y hace flush |
+| `deleteMany($entities)` | Elimina múltiples entidades en una transacción |
+| `persist($entity)` | Registra para inserción/actualización sin flush |
+| `flush()` | Ejecuta todas las operaciones pendientes |
+| `merge($entity)` | Merge de entidad detached |
+| `count($criteria)` | Cuenta entidades por criterios |
+| `exists($criteria)` | Verifica si existe al menos una entidad |
+| `query($oql, $params)` | Ejecuta OQL y devuelve resultados |
+| `queryIterator($oql, $params)` | Ejecuta OQL con Generator (memoria eficiente) |
+| `queryCached($oql, $params, $ttl)` | Query con caché de segundo nivel |
+| `queryScalar($oql, $params)` | Devuelve un valor escalar |
+| `executeUpdate($oql, $params)` | Ejecuta UPDATE/DELETE OQL |
+| `createQueryBuilder()` | Crea un QueryBuilder para la entidad |
+| `transactional($callback)` | Ejecuta un callable en transacción |
+| `refresh($entity)` | Recarga la entidad desde la base de datos |
+
+## Operaciones CRUD
+
+### Inyectar el repositorio en tu servicio
+
+```php
+<?php
+// src/Service/ProductService.php
+
+namespace App\Service;
+
+use App\Entity\Product;
+use App\Repository\ProductRepository;
 
 class ProductService
 {
     public function __construct(
-        private readonly EntityManagerInterface $entityManager,
+        private readonly ProductRepository $productRepository,
     ) {}
 }
 ```
 
-## Operaciones CRUD
+El `RepositoryAutowiringCompilerPass` registra automáticamente los repositorios asociados con `#[Entity(repositoryClass: ...)]`. No necesitas configurar nada en `services.yaml`.
 
-### Buscar por ID (find)
+### Buscar por ID
 
 ```php
-// Buscar un producto por su clave primaria
-$product = $this->entityManager->find(Product::class, 42);
+public function getProduct(int $id): ?Product
+{
+    return $this->productRepository->find($id);
+}
 
-if ($product === null) {
-    throw new \RuntimeException('Producto no encontrado');
+// O lanzar excepción si no existe:
+public function getProductOrFail(int $id): Product
+{
+    return $this->productRepository->findOrFail($id);
 }
 ```
 
-### Buscar todos (findAll)
+### Buscar todos
 
 ```php
-// Obtener todas las categorías
-$categories = $this->entityManager->findAll(Category::class);
+public function getAllProducts(): array
+{
+    return $this->productRepository->findAll();
+}
 ```
 
-### Buscar por criterios (findBy)
+### Buscar por criterios
 
 ```php
-// Buscar productos activos con precio mayor a 100
-$products = $this->entityManager->findBy(Product::class, [
-    'active' => true,
-    'price' => ['>', 100],
-]);
+public function getActiveProducts(): array
+{
+    return $this->productRepository->findActive();
+}
+
+// Con ordenamiento y paginación:
+public function getProductsPaginated(int $page, int $size): array
+{
+    return $this->productRepository->findBy(
+        ['active' => true],
+        ['name' => 'ASC'],
+        $size,
+        ($page - 1) * $size
+    );
+}
 ```
 
-### Buscar uno por criterios (findOneBy)
+### Crear una entidad
 
 ```php
-// Buscar un usuario por email
-$user = $this->entityManager->findOneBy(User::class, [
-    'email' => 'admin@example.com',
-]);
+public function createProduct(string $name, float $price): Product
+{
+    $product = new Product();
+    $product->setName($name);
+    $product->setPrice($price);
+    $product->setActive(true);
+
+    $this->productRepository->save($product);
+
+    return $product;
+}
 ```
 
-### Crear (persist + flush)
+### Actualizar una entidad
 
 ```php
-$product = new Product();
-$product->setName('Nuevo Producto');
-$product->setPrice(29.99);
-$product->setActive(true);
-
-// Marcar para persistir
-$this->entityManager->persist($product);
-
-// Ejecutar las operaciones pendientes en la base de datos
-$this->entityManager->flush();
-
-// Ahora $product tiene su ID asignado
-echo $product->getId(); // e.g., 123
+public function updatePrice(int $productId, float $newPrice): void
+{
+    $product = $this->productRepository->findOrFail($productId);
+    $product->setPrice($newPrice);
+    $this->productRepository->save($product);
+}
 ```
 
-### Actualizar (modificar + flush)
+### Eliminar una entidad
 
 ```php
-$product = $this->entityManager->find(Product::class, 42);
-$product->setPrice(39.99);
-
-// No es necesario llamar a persist() para entidades ya gestionadas
-$this->entityManager->flush();
+public function deleteProduct(int $productId): void
+{
+    $product = $this->productRepository->findOrFail($productId);
+    $this->productRepository->delete($product);
+}
 ```
 
-### Eliminar (remove + flush)
+## Operaciones en Lote
 
 ```php
-$product = $this->entityManager->find(Product::class, 42);
+public function importProducts(array $data): void
+{
+    $products = [];
 
-$this->entityManager->remove($product);
-$this->entityManager->flush();
+    foreach ($data as $item) {
+        $product = new Product();
+        $product->setName($item['name']);
+        $product->setPrice($item['price']);
+        $products[] = $product;
+    }
+
+    // Una sola transacción para todas las inserciones
+    $this->productRepository->saveMany($products);
+}
+
+public function deactivateProducts(array $productIds): void
+{
+    $products = $this->productRepository->findBy(['id' => $productIds]);
+
+    foreach ($products as $product) {
+        $product->setActive(false);
+    }
+
+    $this->productRepository->flush();
+}
 ```
 
-## UnitOfWork
+## Transacciones
 
-El `EntityManager` utiliza internamente un `UnitOfWork` que acumula todas las operaciones (inserts, updates, deletes) y las ejecuta en una sola transacción al llamar a `flush()`.
-
-Esto significa que puedes realizar múltiples operaciones antes de llamar a `flush()`:
+Para operaciones que requieren atomicidad entre múltiples repositorios:
 
 ```php
-// Múltiples operaciones en una sola transacción
-$product1 = new Product();
-$product1->setName('Producto A');
-$this->entityManager->persist($product1);
+class OrderService
+{
+    public function __construct(
+        private readonly OrderRepository $orderRepository,
+        private readonly ProductRepository $productRepository,
+    ) {}
 
-$product2 = new Product();
-$product2->setName('Producto B');
-$this->entityManager->persist($product2);
+    public function placeOrder(int $productId, int $quantity): Order
+    {
+        return $this->orderRepository->transactional(function () use ($productId, $quantity) {
+            $product = $this->productRepository->findOrFail($productId);
 
-$oldProduct = $this->entityManager->find(Product::class, 1);
-$this->entityManager->remove($oldProduct);
+            $order = new Order();
+            $order->setProduct($product);
+            $order->setQuantity($quantity);
+            $order->setTotal($product->getPrice() * $quantity);
 
-// Todo se ejecuta en una sola transacción
-$this->entityManager->flush();
+            $this->orderRepository->save($order);
+
+            return $order;
+        });
+    }
+}
+```
+
+## Conteo y Existencia
+
+```php
+// Contar productos activos
+$count = $this->productRepository->count(['active' => true]);
+
+// Verificar si existe un producto con ese nombre
+$exists = $this->productRepository->exists(['name' => 'Widget Pro']);
+```
+
+## QueryBuilder
+
+Para queries más complejas, usa el QueryBuilder:
+
+```php
+class ProductRepository extends EntityRepository
+{
+    // ...
+
+    public function findWithFilters(array $filters): array
+    {
+        $qb = $this->createQueryBuilder();
+
+        if (isset($filters['minPrice'])) {
+            $qb->where('e.price >= :minPrice', ['minPrice' => $filters['minPrice']]);
+        }
+
+        if (isset($filters['category'])) {
+            $qb->andWhere('e.category_id = :cat', ['cat' => $filters['category']]);
+        }
+
+        $qb->orderBy('e.name', 'ASC');
+
+        if (isset($filters['limit'])) {
+            $qb->setMaxResults($filters['limit']);
+        }
+
+        return $qb->getResult();
+    }
+}
 ```
 
 ## Identity Map
@@ -123,31 +339,36 @@ $this->entityManager->flush();
 El ORM mantiene un mapa de identidad que asegura que cada entidad se represente por una única instancia PHP durante el ciclo de vida del request:
 
 ```php
-$product1 = $this->entityManager->find(Product::class, 42);
-$product2 = $this->entityManager->find(Product::class, 42);
+$product1 = $this->productRepository->find(42);
+$product2 = $this->productRepository->find(42);
 
 // Misma instancia — no hay consulta duplicada a la DB
 assert($product1 === $product2); // true
 ```
 
-## Ejecutar Queries Directos
+## Queries Directos (SQL)
 
-Si necesitas ejecutar SQL directamente:
+Para reportes o consultas que no encajan en el patrón de entidades, crea un repositorio especializado con `ConnectionManagerInterface`:
 
 ```php
+<?php
+// src/Repository/ReportRepository.php
+
+namespace App\Repository;
+
 use SybaseORM\Connection\ConnectionManagerInterface;
 
-class ReportService
+class ReportRepository
 {
     public function __construct(
         private readonly ConnectionManagerInterface $connection,
     ) {}
 
-    public function getTotalSales(): float
+    public function getTotalSales(int $year): float
     {
         $stmt = $this->connection->executeQuery(
             'SELECT SUM(total) as total FROM orders WHERE year = ?',
-            [2024]
+            [$year]
         );
 
         $row = $stmt->fetch(\PDO::FETCH_ASSOC);
@@ -158,49 +379,9 @@ class ReportService
 }
 ```
 
-## Uso con EntityManagerRegistry
-
-Para aplicaciones con múltiples conexiones, utiliza `EntityManagerRegistry` para acceder a managers específicos:
-
-```php
-use SybaseORM\ORM\EntityManagerRegistry;
-
-class MultiDbService
-{
-    public function __construct(
-        private readonly EntityManagerRegistry $registry,
-    ) {}
-
-    public function syncData(): void
-    {
-        // Manager de la conexión principal
-        $defaultEm = $this->registry->getManager('default');
-
-        // Manager de la conexión de reporting
-        $reportingEm = $this->registry->getManager('reporting');
-
-        $products = $defaultEm->findAll(Product::class);
-        // ... procesar y guardar en reporting
-    }
-}
-```
-
-## Conexiones de Solo Lectura
-
-Si configuras una conexión con `read_only: true`, el EntityManager asociado bloqueará operaciones de escritura:
-
-```php
-// En una conexión read_only, esto lanzará una excepción
-$em = $this->registry->getManager('reporting');
-$em->persist($newEntity); // ❌ ReadOnlyException
-$em->flush();             // ❌ ReadOnlyException
-```
-
-Esto es útil para conexiones a réplicas de lectura o bases de datos de reporting.
-
 ## Conversión de Charset
 
-Si tu base de datos Sybase ASE usa ISO-8859-1 pero tu aplicación trabaja en UTF-8, activa la conversión:
+Si tu base de datos Sybase ASE usa ISO-8859-1 pero tu aplicación trabaja en UTF-8:
 
 ```yaml
 sybase_orm:

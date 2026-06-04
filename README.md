@@ -76,23 +76,56 @@ sybase_orm:
         - '%kernel.project_dir%/src/Entity'
 ```
 
-### 3. Use the EntityManager
+### 3. Create and use a repository
 
 ```php
+<?php
+// src/Repository/ProductRepository.php
+
+namespace App\Repository;
+
+use App\Entity\Product;
 use SybaseORM\ORM\EntityManagerInterface;
+use SybaseORM\ORM\EntityRepository;
+
+class ProductRepository extends EntityRepository
+{
+    public function __construct(EntityManagerInterface $entityManager)
+    {
+        parent::__construct($entityManager, Product::class);
+    }
+
+    public function findActive(): array
+    {
+        return $this->findBy(['active' => true]);
+    }
+}
+```
+
+### 4. Inject the repository in your service
+
+```php
+use App\Repository\ProductRepository;
 
 class ProductService
 {
     public function __construct(
-        private readonly EntityManagerInterface $entityManager,
+        private readonly ProductRepository $productRepository,
     ) {}
 
     public function findProduct(int $id): ?Product
     {
-        return $this->entityManager->find(Product::class, $id);
+        return $this->productRepository->find($id);
+    }
+
+    public function getActiveProducts(): array
+    {
+        return $this->productRepository->findActive();
     }
 }
 ```
+
+Repositories linked via `#[Entity(repositoryClass: ...)]` are automatically registered for dependency injection. `EntityRepository` provides `find`, `findAll`, `findBy`, `save`, `delete`, `count`, `transactional`, and more out of the box.
 
 ## Configuration Reference
 
