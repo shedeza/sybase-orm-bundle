@@ -2,7 +2,7 @@
     "name": "shedeza/sybase-orm-bundle",
     "description": "Symfony Bundle integration for shedeza/sybase-orm",
     "type": "symfony-bundle",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "license": "MIT",
     "require": {
         "php": "^8.1",
@@ -35,5 +35,10 @@
         "symfony": {
             "allow-contrib": false
         }
+    },
+    "scripts": {
+        "post-update-cmd": [
+            "@php bin/console sybase:proxy:generate --quiet 2>/dev/null || true"
+        ]
     }
 }

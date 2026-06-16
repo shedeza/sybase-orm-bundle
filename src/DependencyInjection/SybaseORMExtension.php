@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace SybaseORM\Bundle\DependencyInjection;
 
 use Psr\Log\LoggerInterface;
+use SybaseORM\Bundle\CacheWarmer\ProxyCacheWarmer;
 use SybaseORM\Bundle\Command\CacheClearCommand;
 use SybaseORM\Bundle\Command\InstallCommand;
 use SybaseORM\Bundle\Command\MigrationsGenerateCommand;
@@ -144,6 +145,18 @@ final class SybaseORMExtension extends Extension
         ]);
         $proxyGenDef->addTag('console.command');
         $container->setDefinition(ProxyGenerateCommand::class, $proxyGenDef);
+
+        // Register ProxyCacheWarmer — regenera proxies si shedeza/sybase-orm se actualizó
+        $cacheWarmerDef = new Definition(ProxyCacheWarmer::class, [
+            new Reference(ProxyGenerator::class),
+            new Reference(MetadataReaderInterface::class),
+            $config['entity_directories'],
+            $config['proxy_directory'],
+            '%kernel.project_dir%',
+        ]);
+        $cacheWarmerDef->addTag('kernel.cache_warmer', ['priority' => 0]);
+        $cacheWarmerDef->setPublic(false);
+        $container->setDefinition(ProxyCacheWarmer::class, $cacheWarmerDef);
 
         // Register DataCollector for Symfony Web Profiler (only if kernel.debug)
         $collectorDef = new Definition(SybaseQueryCollector::class);
