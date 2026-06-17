@@ -4,9 +4,7 @@ declare(strict_types=1);
 
 namespace SybaseORM\Bundle\Command;
 
-use FilesystemIterator;
-use RecursiveDirectoryIterator;
-use RecursiveIteratorIterator;
+use SybaseORM\Metadata\EntityDiscovery;
 use SybaseORM\Metadata\MetadataReaderInterface;
 use SybaseORM\Proxy\ProxyGenerator;
 use Symfony\Component\Console\Attribute\AsCommand;
@@ -38,7 +36,8 @@ final class ProxyGenerateCommand extends Command
         $io = new SymfonyStyle($input, $output);
         $io->title('Sybase ORM - Generate Proxies');
 
-        $entityClasses = $this->discoverEntityClasses();
+        $discovery = new EntityDiscovery($this->metadataReader);
+        $entityClasses = $discovery->discoverEntityClasses($this->entityDirectories);
 
         if (empty($entityClasses)) {
             $io->warning('No entity classes found in configured directories.');
@@ -56,66 +55,5 @@ final class ProxyGenerateCommand extends Command
         $io->success(\sprintf('Generated %d proxy class(es).', $generated));
 
         return Command::SUCCESS;
-    }
-
-    /**
-     * Discovers entity classes from configured directories.
-     *
-     * @return string[]
-     */
-    private function discoverEntityClasses(): array
-    {
-        $classes = [];
-
-        foreach ($this->entityDirectories as $directory) {
-            if (!is_dir($directory)) {
-                continue;
-            }
-
-            $iterator = new RecursiveIteratorIterator(
-                new RecursiveDirectoryIterator($directory, FilesystemIterator::SKIP_DOTS),
-            );
-
-            foreach ($iterator as $file) {
-                if ($file->getExtension() !== 'php') {
-                    continue;
-                }
-
-                $className = $this->extractClassName($file->getPathname());
-                if ($className !== null && $this->metadataReader->isEntity($className)) {
-                    $classes[] = $className;
-                }
-            }
-        }
-
-        return $classes;
-    }
-
-    /**
-     * Extracts the fully qualified class name from a PHP file.
-     */
-    private function extractClassName(string $filePath): ?string
-    {
-        $contents = file_get_contents($filePath);
-        if ($contents === false) {
-            return null;
-        }
-
-        $namespace = null;
-        $class = null;
-
-        if (preg_match('/namespace\s+([^;]+);/', $contents, $matches)) {
-            $namespace = $matches[1];
-        }
-
-        if (preg_match('/class\s+(\w+)/', $contents, $matches)) {
-            $class = $matches[1];
-        }
-
-        if ($class === null) {
-            return null;
-        }
-
-        return $namespace !== null ? $namespace . '\\' . $class : $class;
     }
 }

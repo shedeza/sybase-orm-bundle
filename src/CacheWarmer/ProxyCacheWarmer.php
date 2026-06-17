@@ -4,9 +4,7 @@ declare(strict_types=1);
 
 namespace SybaseORM\Bundle\CacheWarmer;
 
-use FilesystemIterator;
-use RecursiveDirectoryIterator;
-use RecursiveIteratorIterator;
+use SybaseORM\Metadata\EntityDiscovery;
 use SybaseORM\Metadata\MetadataReaderInterface;
 use SybaseORM\Proxy\ProxyGenerator;
 use Symfony\Component\HttpKernel\CacheWarmer\CacheWarmerInterface;
@@ -44,7 +42,6 @@ final class ProxyCacheWarmer implements CacheWarmerInterface
         $currentVersion = $this->getInstalledPackageVersion();
 
         if ($currentVersion === null) {
-            // Paquete no encontrado en composer.lock, nada que hacer
             return [];
         }
 
@@ -52,11 +49,9 @@ final class ProxyCacheWarmer implements CacheWarmerInterface
         $previousVersion = $this->getPreviousVersion($versionFilePath);
 
         if ($previousVersion === $currentVersion && $this->proxiesExist()) {
-            // Misma versión y proxies existen — no regenerar
             return [];
         }
 
-        // Versión nueva o proxies no existen — regenerar
         $this->clearProxies();
         $this->generateAllProxies();
         $this->saveVersion($versionFilePath, $currentVersion);
@@ -64,9 +59,6 @@ final class ProxyCacheWarmer implements CacheWarmerInterface
         return [];
     }
 
-    /**
-     * Lee la versión instalada de shedeza/sybase-orm desde composer.lock.
-     */
     private function getInstalledPackageVersion(): ?string
     {
         $composerLockPath = $this->projectDir . '/composer.lock';
@@ -96,9 +88,6 @@ final class ProxyCacheWarmer implements CacheWarmerInterface
         return null;
     }
 
-    /**
-     * Obtiene la versión previamente guardada.
-     */
     private function getPreviousVersion(string $versionFilePath): ?string
     {
         if (!file_exists($versionFilePath)) {
@@ -110,9 +99,6 @@ final class ProxyCacheWarmer implements CacheWarmerInterface
         return $version !== false ? trim($version) : null;
     }
 
-    /**
-     * Guarda la versión actual en el archivo de control.
-     */
     private function saveVersion(string $versionFilePath, string $version): void
     {
         $dir = \dirname($versionFilePath);
@@ -123,9 +109,6 @@ final class ProxyCacheWarmer implements CacheWarmerInterface
         file_put_contents($versionFilePath, $version);
     }
 
-    /**
-     * Verifica si ya existen archivos de proxy generados.
-     */
     private function proxiesExist(): bool
     {
         if (!is_dir($this->proxyDirectory)) {
@@ -137,9 +120,6 @@ final class ProxyCacheWarmer implements CacheWarmerInterface
         return !empty($files);
     }
 
-    /**
-     * Elimina todos los proxies generados previamente.
-     */
     private function clearProxies(): void
     {
         if (!is_dir($this->proxyDirectory)) {
@@ -156,76 +136,13 @@ final class ProxyCacheWarmer implements CacheWarmerInterface
         }
     }
 
-    /**
-     * Genera proxies para todas las entidades encontradas.
-     */
     private function generateAllProxies(): void
     {
-        $entityClasses = $this->discoverEntityClasses();
+        $discovery = new EntityDiscovery($this->metadataReader);
+        $entityClasses = $discovery->discoverEntityClasses($this->entityDirectories);
 
         foreach ($entityClasses as $entityClass) {
             $this->proxyGenerator->generateProxyClass($entityClass);
         }
-    }
-
-    /**
-     * Descubre las clases de entidad desde los directorios configurados.
-     *
-     * @return string[]
-     */
-    private function discoverEntityClasses(): array
-    {
-        $classes = [];
-
-        foreach ($this->entityDirectories as $directory) {
-            if (!is_dir($directory)) {
-                continue;
-            }
-
-            $iterator = new RecursiveIteratorIterator(
-                new RecursiveDirectoryIterator($directory, FilesystemIterator::SKIP_DOTS),
-            );
-
-            foreach ($iterator as $file) {
-                if ($file->getExtension() !== 'php') {
-                    continue;
-                }
-
-                $className = $this->extractClassName($file->getPathname());
-                if ($className !== null && $this->metadataReader->isEntity($className)) {
-                    $classes[] = $className;
-                }
-            }
-        }
-
-        return $classes;
-    }
-
-    /**
-     * Extrae el nombre de clase completo (FQCN) de un archivo PHP.
-     */
-    private function extractClassName(string $filePath): ?string
-    {
-        $contents = file_get_contents($filePath);
-        if ($contents === false) {
-            return null;
-        }
-
-        $namespace = null;
-        $class = null;
-
-        if (preg_match('/namespace\s+([^;]+);/', $contents, $matches)) {
-            $namespace = $matches[1];
-        }
-
-        if (preg_match('/class\s+(\w+)/', $contents, $matches)) {
-            $class = $matches[1];
-        }
-
-        if ($class === null) {
-            return null;
-        }
-
-        return $namespace !== null ? $namespace . '\\' . $class : $class;
     }
 }

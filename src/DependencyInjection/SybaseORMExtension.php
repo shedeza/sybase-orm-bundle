@@ -61,9 +61,13 @@ final class SybaseORMExtension extends Extension
         }
 
         if (empty($connections)) {
-            // No connection configured yet — skip service registration.
+            // No connection configured yet — skip service registration except install command.
             // This allows cache:clear to succeed after install before the user configures the connection.
             // Run 'php bin/console sybase:install' to generate the configuration.
+            $installDef = new Definition(InstallCommand::class, ['%kernel.project_dir%']);
+            $installDef->addTag('console.command');
+            $container->setDefinition(InstallCommand::class, $installDef);
+
             return;
         }
 
