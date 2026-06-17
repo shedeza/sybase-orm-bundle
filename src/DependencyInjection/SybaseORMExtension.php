@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace SybaseORM\Bundle\DependencyInjection;
 
 use Psr\Log\LoggerInterface;
+use Redis;
 use SybaseORM\Bundle\CacheWarmer\ProxyCacheWarmer;
 use SybaseORM\Bundle\Command\CacheClearCommand;
 use SybaseORM\Bundle\Command\InstallCommand;
@@ -17,6 +18,7 @@ use SybaseORM\Bundle\DataCollector\ProfilingEventSubscriber;
 use SybaseORM\Bundle\DataCollector\SybaseQueryCollector;
 use SybaseORM\Cache\CacheManager;
 use SybaseORM\Cache\CacheManagerInterface;
+use SybaseORM\Cache\RedisCacheAdapter;
 use SybaseORM\Connection\ConnectionManager;
 use SybaseORM\Connection\ConnectionManagerInterface;
 use SybaseORM\Connection\ConnectionUrlParser;
@@ -199,6 +201,42 @@ final class SybaseORMExtension extends Extension
         return new ConnectionManager($config, $logger);
     }
 
+    /**
+     * Factory method to create a Redis connection for the second-level cache.
+     * Supports both individual host/port params and a full DSN string.
+     */
+    public static function createRedisConnection(
+        string $host = '127.0.0.1',
+        int $port = 6379,
+        ?string $password = null,
+        int $database = 0,
+        float $timeout = 2.0,
+        ?string $dsn = null,
+    ): Redis {
+        $redis = new Redis();
+
+        if ($dsn !== null) {
+            // Parse DSN: redis://[:password@]host:port/database
+            $parts = parse_url($dsn);
+            $host = $parts['host'] ?? $host;
+            $port = $parts['port'] ?? $port;
+            $password = $parts['pass'] ?? $password;
+            $database = isset($parts['path']) ? (int) ltrim($parts['path'], '/') : $database;
+        }
+
+        $redis->connect($host, $port, $timeout);
+
+        if ($password !== null && $password !== '') {
+            $redis->auth($password);
+        }
+
+        if ($database !== 0) {
+            $redis->select($database);
+        }
+
+        return $redis;
+    }
+
     private function registerDialect(ContainerBuilder $container): void
     {
         $definition = new Definition(SybaseDialect::class);
@@ -345,11 +383,40 @@ final class SybaseORMExtension extends Extension
         $imDef->setPublic(false);
         $container->setDefinition('sybase_orm.identity_map' . $suffix, $imDef);
 
-        // 3. CacheManager (per-connection)
+        // 3. CacheManager (per-connection) with optional Redis second-level cache
+        $cacheConfig = $globalConfig['cache'] ?? [];
+        $redisConfig = $globalConfig['redis'] ?? [];
+        $secondLevelRef = null;
+
+        if (($cacheConfig['enabled'] ?? false) && ($cacheConfig['adapter'] ?? null) === 'redis') {
+            // Register RedisCacheAdapter
+            $redisDef = new Definition(Redis::class);
+            $redisDef->setPublic(false);
+            $redisDef->setFactory([self::class, 'createRedisConnection']);
+            $redisDef->setArguments([
+                $redisConfig['host'] ?? '127.0.0.1',
+                $redisConfig['port'] ?? 6379,
+                $redisConfig['password'] ?? null,
+                $redisConfig['database'] ?? 0,
+                $redisConfig['timeout'] ?? 2.0,
+                $redisConfig['dsn'] ?? null,
+            ]);
+            $container->setDefinition('sybase_orm.redis' . $suffix, $redisDef);
+
+            $adapterDef = new Definition(RedisCacheAdapter::class, [
+                new Reference('sybase_orm.redis' . $suffix),
+                $cacheConfig['prefix'] ?? 'sybase_orm:',
+            ]);
+            $adapterDef->setPublic(false);
+            $container->setDefinition('sybase_orm.cache_adapter' . $suffix, $adapterDef);
+
+            $secondLevelRef = new Reference('sybase_orm.cache_adapter' . $suffix);
+        }
+
         $cacheDef = new Definition(CacheManager::class, [
             new Reference('sybase_orm.identity_map' . $suffix),
-            null,
-            null,
+            $secondLevelRef,
+            $loggerRef,
         ]);
         $cacheDef->setPublic(false);
         $container->setDefinition('sybase_orm.cache_manager' . $suffix, $cacheDef);

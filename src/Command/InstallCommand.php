@@ -51,8 +51,17 @@ final class InstallCommand extends Command
             cache:
                 enabled: false
                 # adapter: redis
-                # dsn: '%env(REDIS_URL)%'
                 # default_ttl: 3600
+                # prefix: 'sybase_orm:'
+
+            # Redis connection for second-level cache
+            # redis:
+            #     host: '%env(REDIS_HOST)%'
+            #     port: '%env(int:REDIS_PORT)%'
+            #     # password: '%env(REDIS_PASSWORD)%'
+            #     # database: 0
+            #     # timeout: 2.0
+            #     # dsn: '%env(REDIS_URL)%'
 
         YAML;
 

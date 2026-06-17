@@ -7,3 +7,12 @@ sybase_orm:
     migrations_directory: '%kernel.project_dir%/sybase_ase/migrations'
     cache:
         enabled: false
+        # adapter: redis
+        # default_ttl: 3600
+        # prefix: 'sybase_orm:'
+    # redis:
+    #     host: '%env(REDIS_HOST)%'
+    #     port: '%env(int:REDIS_PORT)%'
+    #     # password: '%env(REDIS_PASSWORD)%'
+    #     # database: 0
+    #     # timeout: 2.0
