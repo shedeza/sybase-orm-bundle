@@ -16,4 +16,9 @@ class SybaseORMBundle extends Bundle
 
         $container->addCompilerPass(new RepositoryAutowiringCompilerPass());
     }
+
+    public function getPath(): string
+    {
+        return __DIR__;
+    }
 }
