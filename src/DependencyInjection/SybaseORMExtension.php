@@ -259,7 +259,12 @@ final class SybaseORMExtension extends Extension
     {
         $cacheDir = $config['proxy_directory'];
 
-        $definition = new Definition(MetadataReader::class, [$cacheDir]);
+        $definition = new Definition(MetadataReader::class, [
+            $cacheDir,
+            true, // useInstanceCache
+            $config['directory_permissions'] ?? 0o777,
+            $config['file_permissions'] ?? 0o666,
+        ]);
         $definition->setPublic(false);
 
         $container->setDefinition(MetadataReader::class, $definition);
@@ -286,6 +291,8 @@ final class SybaseORMExtension extends Extension
     {
         $definition = new Definition(ProxyGenerator::class, [
             $config['proxy_directory'],
+            $config['directory_permissions'] ?? 0o777,
+            $config['file_permissions'] ?? 0o666,
         ]);
         $definition->setPublic(false);
 
@@ -417,6 +424,8 @@ final class SybaseORMExtension extends Extension
             new Reference('sybase_orm.identity_map' . $suffix),
             $secondLevelRef,
             $loggerRef,
+            $cacheConfig['failure_threshold'] ?? 3,
+            $cacheConfig['cooldown_seconds'] ?? 60,
         ]);
         $cacheDef->setPublic(false);
         $container->setDefinition('sybase_orm.cache_manager' . $suffix, $cacheDef);
