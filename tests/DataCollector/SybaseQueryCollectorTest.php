@@ -49,9 +49,10 @@ final class SybaseQueryCollectorTest extends TestCase
         $queries = $this->collector->getQueries();
         $this->assertCount(1, $queries);
         $this->assertSame('SELECT * FROM users', $queries[0]['sql']);
-        $this->assertSame(['param1'], $queries[0]['params']);
         $this->assertSame(5.5, $queries[0]['time']);
         $this->assertSame('default', $queries[0]['connection']);
+        // Params are cloned via cloneVar() for the profiler, verify it's a Data object
+        $this->assertInstanceOf(\Symfony\Component\VarDumper\Cloner\Data::class, $queries[0]['params']);
     }
 
     public function testMultipleQueries(): void

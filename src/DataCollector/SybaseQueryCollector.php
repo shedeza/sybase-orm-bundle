@@ -105,8 +105,15 @@ final class SybaseQueryCollector extends DataCollector implements LateDataCollec
 
     public function lateCollect(): void
     {
+        // Clone query params for the VarDumper (profiler_dump() requires Data objects)
+        $queries = array_map(function (array $query): array {
+            $query['params'] = $this->cloneVar($query['params']);
+
+            return $query;
+        }, $this->queries);
+
         $this->data = [
-            'queries' => $this->queries,
+            'queries' => $queries,
             'query_count' => \count($this->queries),
             'total_time' => $this->totalTime,
             'hydrated_entities' => $this->hydratedEntities,

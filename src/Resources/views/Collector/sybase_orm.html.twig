@@ -216,7 +216,7 @@
                     {% endif %}
                 </td>
                 <td>
-                    {% if query.params|length > 0 %}
+                    {% if query.params is not empty %}
                         {{ profiler_dump(query.params) }}
                     {% else %}
                         <em>none</em>
