@@ -274,7 +274,7 @@ final class SybaseORMExtension extends Extension
     private function registerProfilingServices(ContainerBuilder $container): void
     {
         // Only register when the WebProfilerBundle is available
-        if (!class_exists(\Symfony\Bundle\WebProfilerBundle\WebProfilerBundle::class)) {
+        if (!class_exists('Symfony\\Bundle\\WebProfilerBundle\\WebProfilerBundle')) {
             return;
         }
 
