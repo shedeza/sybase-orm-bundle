@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace SybaseORM\Bundle\Command;
 
+use FilesystemIterator;
+use RecursiveDirectoryIterator;
+use RecursiveIteratorIterator;
 use SybaseORM\Metadata\MetadataReaderInterface;
 use SybaseORM\Migration\MigrationManager;
 use Symfony\Component\Console\Attribute\AsCommand;
@@ -43,7 +46,7 @@ final class MigrationsGenerateCommand extends Command
             return Command::SUCCESS;
         }
 
-        $io->text(sprintf('Found %d entity class(es).', count($entityClasses)));
+        $io->text(\sprintf('Found %d entity class(es).', \count($entityClasses)));
 
         $filePath = $this->migrationManager->generateMigration($entityClasses);
 
@@ -53,7 +56,7 @@ final class MigrationsGenerateCommand extends Command
             return Command::SUCCESS;
         }
 
-        $io->success(sprintf('Migration generated: %s', $filePath));
+        $io->success(\sprintf('Migration generated: %s', $filePath));
 
         return Command::SUCCESS;
     }
@@ -72,8 +75,8 @@ final class MigrationsGenerateCommand extends Command
                 continue;
             }
 
-            $iterator = new \RecursiveIteratorIterator(
-                new \RecursiveDirectoryIterator($directory, \FilesystemIterator::SKIP_DOTS)
+            $iterator = new RecursiveIteratorIterator(
+                new RecursiveDirectoryIterator($directory, FilesystemIterator::SKIP_DOTS),
             );
 
             foreach ($iterator as $file) {

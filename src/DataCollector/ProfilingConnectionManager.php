@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace SybaseORM\Bundle\DataCollector;
 
+use PDO;
+use PDOStatement;
 use SybaseORM\Connection\ConnectionManagerInterface;
 
 /**
@@ -19,15 +21,14 @@ final class ProfilingConnectionManager implements ConnectionManagerInterface
         private readonly SybaseQueryCollector $collector,
         private readonly string $connectionName = 'default',
         private readonly bool $collectBacktraces = false,
-    ) {
-    }
+    ) {}
 
-    public function getConnection(): \PDO
+    public function getConnection(): PDO
     {
         return $this->inner->getConnection();
     }
 
-    public function executeQuery(string $sql, array $params = []): \PDOStatement
+    public function executeQuery(string $sql, array $params = []): PDOStatement
     {
         $start = microtime(true);
 
@@ -127,9 +128,9 @@ final class ProfilingConnectionManager implements ConnectionManagerInterface
             $line = $frame['line'] ?? 0;
             $function = ($class !== '' ? $class . '::' : '') . $frame['function'];
 
-            $lines[] = sprintf('%s:%d → %s()', $file, $line, $function);
+            $lines[] = \sprintf('%s:%d → %s()', $file, $line, $function);
 
-            if (count($lines) >= 8) {
+            if (\count($lines) >= 8) {
                 break;
             }
         }

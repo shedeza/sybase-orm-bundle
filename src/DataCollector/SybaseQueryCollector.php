@@ -8,6 +8,7 @@ use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\DataCollector\DataCollector;
 use Symfony\Component\HttpKernel\DataCollector\LateDataCollectorInterface;
+use Throwable;
 
 /**
  * Symfony Web Profiler DataCollector for SybaseORM.
@@ -97,7 +98,7 @@ final class SybaseQueryCollector extends DataCollector implements LateDataCollec
         }
     }
 
-    public function collect(Request $request, Response $response, ?\Throwable $exception = null): void
+    public function collect(Request $request, Response $response, ?Throwable $exception = null): void
     {
         // Datos base se recopilan durante el request via addQuery(), etc.
     }
@@ -106,7 +107,7 @@ final class SybaseQueryCollector extends DataCollector implements LateDataCollec
     {
         $this->data = [
             'queries' => $this->queries,
-            'query_count' => count($this->queries),
+            'query_count' => \count($this->queries),
             'total_time' => $this->totalTime,
             'hydrated_entities' => $this->hydratedEntities,
             'identity_map_hits' => $this->identityMapHits,
@@ -217,7 +218,7 @@ final class SybaseQueryCollector extends DataCollector implements LateDataCollec
             $counts[$key] = ($counts[$key] ?? 0) + 1;
         }
 
-        return array_filter($counts, static fn (int $count): bool => $count > 1);
+        return array_filter($counts, static fn(int $count): bool => $count > 1);
     }
 
     /**
@@ -229,7 +230,7 @@ final class SybaseQueryCollector extends DataCollector implements LateDataCollec
     {
         return array_filter(
             $this->queries,
-            static fn (array $query): bool => $query['time'] > 100.0
+            static fn(array $query): bool => $query['time'] > 100.0,
         );
     }
 }

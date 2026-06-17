@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace SybaseORM\Bundle\CacheWarmer;
 
+use FilesystemIterator;
+use RecursiveDirectoryIterator;
+use RecursiveIteratorIterator;
 use SybaseORM\Metadata\MetadataReaderInterface;
 use SybaseORM\Proxy\ProxyGenerator;
 use Symfony\Component\HttpKernel\CacheWarmer\CacheWarmerInterface;
@@ -26,8 +29,7 @@ final class ProxyCacheWarmer implements CacheWarmerInterface
         private readonly array $entityDirectories,
         private readonly string $proxyDirectory,
         private readonly string $projectDir,
-    ) {
-    }
+    ) {}
 
     public function isOptional(): bool
     {
@@ -79,7 +81,7 @@ final class ProxyCacheWarmer implements CacheWarmerInterface
         }
 
         $lock = json_decode($content, true);
-        if (!is_array($lock)) {
+        if (!\is_array($lock)) {
             return null;
         }
 
@@ -113,9 +115,9 @@ final class ProxyCacheWarmer implements CacheWarmerInterface
      */
     private function saveVersion(string $versionFilePath, string $version): void
     {
-        $dir = dirname($versionFilePath);
+        $dir = \dirname($versionFilePath);
         if (!is_dir($dir)) {
-            mkdir($dir, 0775, true);
+            mkdir($dir, 0o775, true);
         }
 
         file_put_contents($versionFilePath, $version);
@@ -180,8 +182,8 @@ final class ProxyCacheWarmer implements CacheWarmerInterface
                 continue;
             }
 
-            $iterator = new \RecursiveIteratorIterator(
-                new \RecursiveDirectoryIterator($directory, \FilesystemIterator::SKIP_DOTS)
+            $iterator = new RecursiveIteratorIterator(
+                new RecursiveDirectoryIterator($directory, FilesystemIterator::SKIP_DOTS),
             );
 
             foreach ($iterator as $file) {

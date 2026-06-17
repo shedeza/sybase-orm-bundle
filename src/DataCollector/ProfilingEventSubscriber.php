@@ -14,8 +14,7 @@ final class ProfilingEventSubscriber implements EventSubscriberInterface
 {
     public function __construct(
         private readonly SybaseQueryCollector $collector,
-    ) {
-    }
+    ) {}
 
     public function getSubscribedEvents(): array
     {

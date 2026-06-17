@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace SybaseORM\Bundle\Command;
 
+use FilesystemIterator;
+use RecursiveDirectoryIterator;
+use RecursiveIteratorIterator;
 use SybaseORM\Metadata\MetadataReaderInterface;
 use SybaseORM\Proxy\ProxyGenerator;
 use Symfony\Component\Console\Attribute\AsCommand;
@@ -46,11 +49,11 @@ final class ProxyGenerateCommand extends Command
         $generated = 0;
         foreach ($entityClasses as $entityClass) {
             $proxyClass = $this->proxyGenerator->generateProxyClass($entityClass);
-            $io->text(sprintf('Generated proxy: %s', $proxyClass));
+            $io->text(\sprintf('Generated proxy: %s', $proxyClass));
             $generated++;
         }
 
-        $io->success(sprintf('Generated %d proxy class(es).', $generated));
+        $io->success(\sprintf('Generated %d proxy class(es).', $generated));
 
         return Command::SUCCESS;
     }
@@ -69,8 +72,8 @@ final class ProxyGenerateCommand extends Command
                 continue;
             }
 
-            $iterator = new \RecursiveIteratorIterator(
-                new \RecursiveDirectoryIterator($directory, \FilesystemIterator::SKIP_DOTS)
+            $iterator = new RecursiveIteratorIterator(
+                new RecursiveDirectoryIterator($directory, FilesystemIterator::SKIP_DOTS),
             );
 
             foreach ($iterator as $file) {

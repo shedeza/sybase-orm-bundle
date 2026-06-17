@@ -7,7 +7,7 @@ on:
     branches: [ main, develop ]
 
 jobs:
-  test:
+  phpunit:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -18,7 +18,7 @@ jobs:
           - php-version: '8.1'
             symfony: '7.*'
 
-    name: PHP ${{ matrix.php-version }} / Symfony ${{ matrix.symfony }}
+    name: Tests — PHP ${{ matrix.php-version }} / Symfony ${{ matrix.symfony }}
 
     steps:
       - uses: actions/checkout@v4
@@ -27,22 +27,101 @@ jobs:
         uses: shivammathur/setup-php@v2
         with:
           php-version: ${{ matrix.php-version }}
-          extensions: pdo_dblib, pdo, json
+          extensions: pdo_dblib, pdo, json, mbstring
           tools: composer:v2
           coverage: none
 
+      - name: Get Composer cache directory
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> $GITHUB_OUTPUT
+
+      - name: Cache Composer dependencies
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: ${{ runner.os }}-composer-${{ matrix.php-version }}-${{ matrix.symfony }}-${{ hashFiles('**/composer.json') }}
+          restore-keys: |
+            ${{ runner.os }}-composer-${{ matrix.php-version }}-${{ matrix.symfony }}-
+            ${{ runner.os }}-composer-${{ matrix.php-version }}-
+
       - name: Constrain Symfony version
         run: |
-          composer require --no-update symfony/framework-bundle:${{ matrix.symfony }} symfony/console:${{ matrix.symfony }} symfony/http-foundation:${{ matrix.symfony }} symfony/http-kernel:${{ matrix.symfony }}
+          composer require --no-update \
+            symfony/framework-bundle:${{ matrix.symfony }} \
+            symfony/console:${{ matrix.symfony }} \
+            symfony/config:${{ matrix.symfony }} \
+            symfony/dependency-injection:${{ matrix.symfony }} \
+            symfony/http-foundation:${{ matrix.symfony }} \
+            symfony/http-kernel:${{ matrix.symfony }}
 
       - name: Install dependencies
         run: composer update --no-interaction --prefer-dist --prefer-stable
 
       - name: Run PHPUnit
-        run: vendor/bin/phpunit
+        run: vendor/bin/phpunit --colors=always
+
+  phpstan:
+    runs-on: ubuntu-latest
+    name: PHPStan
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_dblib, pdo, json, mbstring
+          tools: composer:v2
+          coverage: none
+
+      - name: Get Composer cache directory
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> $GITHUB_OUTPUT
+
+      - name: Cache Composer dependencies
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: ${{ runner.os }}-composer-phpstan-${{ hashFiles('**/composer.json') }}
+          restore-keys: |
+            ${{ runner.os }}-composer-phpstan-
+
+      - name: Install dependencies
+        run: composer update --no-interaction --prefer-dist --prefer-stable
 
       - name: Run PHPStan
-        run: vendor/bin/phpstan analyse
+        run: vendor/bin/phpstan analyse --no-progress --memory-limit=1G
+
+  cs-fixer:
+    runs-on: ubuntu-latest
+    name: PHP-CS-Fixer
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_dblib, pdo, json, mbstring
+          tools: composer:v2, php-cs-fixer
+          coverage: none
+
+      - name: Get Composer cache directory
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> $GITHUB_OUTPUT
+
+      - name: Cache Composer dependencies
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: ${{ runner.os }}-composer-csfixer-${{ hashFiles('**/composer.json') }}
+          restore-keys: |
+            ${{ runner.os }}-composer-csfixer-
+
+      - name: Install dependencies
+        run: composer update --no-interaction --prefer-dist --prefer-stable
 
       - name: Run PHP-CS-Fixer
-        run: vendor/bin/php-cs-fixer fix --dry-run --diff
+        run: vendor/bin/php-cs-fixer fix --dry-run --diff --config=.php-cs-fixer.dist.php

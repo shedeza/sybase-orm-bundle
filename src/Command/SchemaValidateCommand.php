@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace SybaseORM\Bundle\Command;
 
+use PDO;
 use SybaseORM\Connection\ConnectionManagerInterface;
 use SybaseORM\Metadata\EntityDiscovery;
 use SybaseORM\Metadata\MetadataReaderInterface;
@@ -12,6 +13,7 @@ use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
+use Throwable;
 
 /**
  * Validates that all mapped entities have correct metadata and that
@@ -52,8 +54,8 @@ final class SchemaValidateCommand extends Command
         foreach ($entityClasses as $entityClass) {
             try {
                 $metadata = $this->metadataReader->getClassMetadata($entityClass);
-            } catch (\Throwable $e) {
-                $io->error(sprintf('[%s] Metadata error: %s', $entityClass, $e->getMessage()));
+            } catch (Throwable $e) {
+                $io->error(\sprintf('[%s] Metadata error: %s', $entityClass, $e->getMessage()));
                 $errors++;
                 continue;
             }
@@ -61,7 +63,7 @@ final class SchemaValidateCommand extends Command
             // Check table exists
             $tableExists = $this->tableExists($metadata->tableName);
             if (!$tableExists) {
-                $io->error(sprintf('[%s] Table "%s" does not exist in database.', $entityClass, $metadata->tableName));
+                $io->error(\sprintf('[%s] Table "%s" does not exist in database.', $entityClass, $metadata->tableName));
                 $errors++;
                 continue;
             }
@@ -72,30 +74,30 @@ final class SchemaValidateCommand extends Command
                 // Skip embedded columns (dot notation)
                 if (str_contains($column->propertyName, '.')) {
                     // Check the prefixed column name
-                    if (!in_array($column->columnName, $dbColumns, true)) {
-                        $io->warning(sprintf('[%s] Column "%s" not found in table "%s".', $entityClass, $column->columnName, $metadata->tableName));
+                    if (!\in_array($column->columnName, $dbColumns, true)) {
+                        $io->warning(\sprintf('[%s] Column "%s" not found in table "%s".', $entityClass, $column->columnName, $metadata->tableName));
                     }
                     continue;
                 }
 
-                if (!in_array($column->columnName, $dbColumns, true)) {
-                    $io->warning(sprintf('[%s] Column "%s" not found in table "%s".', $entityClass, $column->columnName, $metadata->tableName));
+                if (!\in_array($column->columnName, $dbColumns, true)) {
+                    $io->warning(\sprintf('[%s] Column "%s" not found in table "%s".', $entityClass, $column->columnName, $metadata->tableName));
                 }
             }
 
             $validated++;
-            $io->text(sprintf('  <info>✓</info> %s → %s (%d columns)', $entityClass, $metadata->tableName, count($metadata->columns)));
+            $io->text(\sprintf('  <info>✓</info> %s → %s (%d columns)', $entityClass, $metadata->tableName, \count($metadata->columns)));
         }
 
         $io->newLine();
 
         if ($errors > 0) {
-            $io->error(sprintf('Validation failed: %d error(s), %d entity(ies) validated.', $errors, $validated));
+            $io->error(\sprintf('Validation failed: %d error(s), %d entity(ies) validated.', $errors, $validated));
 
             return Command::FAILURE;
         }
 
-        $io->success(sprintf('All %d entities validated successfully.', $validated));
+        $io->success(\sprintf('All %d entities validated successfully.', $validated));
 
         return Command::SUCCESS;
     }
@@ -106,7 +108,7 @@ final class SchemaValidateCommand extends Command
             "SELECT 1 FROM sysobjects WHERE name = ? AND type = 'U'",
             [$tableName],
         );
-        $exists = $stmt->fetch(\PDO::FETCH_ASSOC) !== false;
+        $exists = $stmt->fetch(PDO::FETCH_ASSOC) !== false;
         $stmt->closeCursor();
 
         return $exists;
@@ -123,7 +125,7 @@ final class SchemaValidateCommand extends Command
         );
 
         $columns = [];
-        while ($row = $stmt->fetch(\PDO::FETCH_ASSOC)) {
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
             $columns[] = $row['name'];
         }
         $stmt->closeCursor();

@@ -11,6 +11,7 @@ use Symfony\Component\DependencyInjection\Compiler\CompilerPassInterface;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Definition;
 use Symfony\Component\DependencyInjection\Reference;
+use Throwable;
 
 /**
  * Compiler pass that auto-registers custom repository classes as autowireable services.
@@ -52,7 +53,7 @@ final class RepositoryAutowiringCompilerPass implements CompilerPassInterface
         foreach ($entityClasses as $entityClass) {
             try {
                 $metadata = $metadataReader->getClassMetadata($entityClass);
-            } catch (\Throwable) {
+            } catch (Throwable) {
                 // Skip entities that can't be read (e.g., missing dependencies at compile time)
                 continue;
             }

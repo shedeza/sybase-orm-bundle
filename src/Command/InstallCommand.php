@@ -26,35 +26,35 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 final class InstallCommand extends Command
 {
     private const CONFIG_TEMPLATE = <<<'YAML'
-# Configuración de SybaseORM Bundle
-# Documentación: https://github.com/shedeza/sybase-orm
-sybase_orm:
-    connection:
-        # Opción 1 (recomendada): URL de conexión única
-        url: '%env(DATABASE_URL)%'
+        # Configuración de SybaseORM Bundle
+        # Documentación: https://github.com/shedeza/sybase-orm
+        sybase_orm:
+            connection:
+                # Opción 1 (recomendada): URL de conexión única
+                url: '%env(DATABASE_URL)%'
 
-        # Opción 2: Parámetros individuales (descomentar y comentar url)
-        # host: '%env(SYBASE_HOST)%'
-        # port: '%env(int:SYBASE_PORT)%'
-        # database: '%env(SYBASE_DATABASE)%'
-        # username: '%env(SYBASE_USERNAME)%'
-        # password: '%env(SYBASE_PASSWORD)%'
-        # charset: UTF-8
-        # persistent: false
+                # Opción 2: Parámetros individuales (descomentar y comentar url)
+                # host: '%env(SYBASE_HOST)%'
+                # port: '%env(int:SYBASE_PORT)%'
+                # database: '%env(SYBASE_DATABASE)%'
+                # username: '%env(SYBASE_USERNAME)%'
+                # password: '%env(SYBASE_PASSWORD)%'
+                # charset: UTF-8
+                # persistent: false
 
-    entity_directories:
-        - '%kernel.project_dir%/src/Entity'
+            entity_directories:
+                - '%kernel.project_dir%/src/Entity'
 
-    proxy_directory: '%kernel.cache_dir%/sybase_orm/proxies'
-    migrations_directory: '%kernel.project_dir%/sybase_ase/migrations'
+            proxy_directory: '%kernel.cache_dir%/sybase_orm/proxies'
+            migrations_directory: '%kernel.project_dir%/sybase_ase/migrations'
 
-    cache:
-        enabled: false
-        # adapter: redis
-        # dsn: '%env(REDIS_URL)%'
-        # default_ttl: 3600
+            cache:
+                enabled: false
+                # adapter: redis
+                # dsn: '%env(REDIS_URL)%'
+                # default_ttl: 3600
 
-YAML;
+        YAML;
 
     private const ENV_LINE = 'DATABASE_URL="sybase://sa:!ChangeMe!@127.0.0.1:5000/app?charset=UTF-8"';
 
@@ -96,14 +96,14 @@ YAML;
         $configPath = $this->projectDir . '/config/packages/sybase_orm.yaml';
 
         if (file_exists($configPath) && !$force) {
-            $io->text("  <info>✓</info> config/packages/sybase_orm.yaml ya existe (usa --force para sobreescribir)");
+            $io->text('  <info>✓</info> config/packages/sybase_orm.yaml ya existe (usa --force para sobreescribir)');
 
             return;
         }
 
-        $dir = dirname($configPath);
+        $dir = \dirname($configPath);
         if (!is_dir($dir)) {
-            mkdir($dir, 0755, true);
+            mkdir($dir, 0o755, true);
         }
 
         file_put_contents($configPath, self::CONFIG_TEMPLATE);
@@ -150,7 +150,7 @@ YAML;
             return;
         }
 
-        mkdir($migrationsDir, 0755, true);
+        mkdir($migrationsDir, 0o755, true);
         file_put_contents($migrationsDir . '/.gitkeep', '');
         $io->text('  <info>✓</info> Creado directorio sybase_ase/migrations/');
     }
@@ -180,7 +180,7 @@ YAML;
         // Insertar antes del cierre del array
         $newContent = str_replace(
             '];',
-            "    " . self::BUNDLE_LINE . "\n];",
+            '    ' . self::BUNDLE_LINE . "\n];",
             $content,
         );
 

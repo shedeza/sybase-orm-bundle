@@ -10,6 +10,7 @@ use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
+use Throwable;
 
 /**
  * Executes all pending database migrations.
@@ -40,12 +41,12 @@ final class MigrationsMigrateCommand extends Command
                 return Command::SUCCESS;
             }
 
-            $io->success(sprintf('Executed %d migration(s):', count($executed)));
+            $io->success(\sprintf('Executed %d migration(s):', \count($executed)));
             $io->listing($executed);
 
             return Command::SUCCESS;
-        } catch (\Throwable $e) {
-            $io->error(sprintf('Migration failed: %s', $e->getMessage()));
+        } catch (Throwable $e) {
+            $io->error(\sprintf('Migration failed: %s', $e->getMessage()));
 
             return Command::FAILURE;
         }
