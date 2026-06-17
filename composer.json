@@ -38,6 +38,7 @@
     "suggest": {
         "symfony/web-profiler-bundle": "For Sybase ORM debug toolbar and profiler panel",
         "symfony/twig-bundle": "Required by the web profiler panel for template rendering",
+        "symfony/var-dumper": "For parameter dumping in the profiler query panel",
         "twig/twig": "Required for the web profiler panel rendering"
     },
     "extra": {
