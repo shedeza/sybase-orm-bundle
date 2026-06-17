@@ -29,7 +29,13 @@
         "phpunit/phpunit": "^10.0",
         "phpstan/phpstan": "^1.10",
         "friendsofphp/php-cs-fixer": "^3.50",
-        "symfony/phpunit-bridge": "^6.0|^7.0"
+        "symfony/phpunit-bridge": "^6.0|^7.0",
+        "symfony/web-profiler-bundle": "^6.0|^7.0",
+        "twig/twig": "^3.0"
+    },
+    "suggest": {
+        "symfony/web-profiler-bundle": "For Sybase ORM debug toolbar and profiler panel",
+        "twig/twig": "Required for the web profiler panel rendering"
     },
     "extra": {
         "symfony": {

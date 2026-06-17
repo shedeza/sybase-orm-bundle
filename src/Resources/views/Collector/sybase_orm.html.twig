@@ -1,0 +1,232 @@
+{% extends '@WebProfiler/Profiler/layout.html.twig' %}
+
+{% block toolbar %}
+    {% set icon %}
+        <span class="icon">
+            {{ include('@SybaseORM/Collector/icon.svg') }}
+        </span>
+        <span class="sf-toolbar-value">{{ collector.queryCount }}</span>
+        <span class="sf-toolbar-info-piece-additional-detail">
+            <span class="sf-toolbar-label">in</span>
+            <span class="sf-toolbar-value">{{ '%0.2f'|format(collector.totalTime) }}</span>
+            <span class="sf-toolbar-label">ms</span>
+        </span>
+    {% endset %}
+
+    {% set text %}
+        <div class="sf-toolbar-info-piece">
+            <b>Queries</b>
+            <span class="sf-toolbar-status {{ collector.queryCount > 50 ? 'sf-toolbar-status-yellow' }}">{{ collector.queryCount }}</span>
+        </div>
+        <div class="sf-toolbar-info-piece">
+            <b>Query time</b>
+            <span>{{ '%0.2f'|format(collector.totalTime) }} ms</span>
+        </div>
+        <div class="sf-toolbar-info-piece">
+            <b>Hydrated</b>
+            <span>{{ collector.hydratedEntities }}</span>
+        </div>
+        <div class="sf-toolbar-info-piece">
+            <b>Identity Map</b>
+            <span>{{ collector.identityMapSize }} entities ({{ collector.identityMapHits }} hits)</span>
+        </div>
+        {% if collector.duplicateQueries|length > 0 %}
+        <div class="sf-toolbar-info-piece">
+            <b>Duplicates</b>
+            <span class="sf-toolbar-status sf-toolbar-status-yellow">{{ collector.duplicateQueries|length }}</span>
+        </div>
+        {% endif %}
+        {% if collector.slowQueries|length > 0 %}
+        <div class="sf-toolbar-info-piece">
+            <b>Slow queries</b>
+            <span class="sf-toolbar-status sf-toolbar-status-red">{{ collector.slowQueries|length }}</span>
+        </div>
+        {% endif %}
+    {% endset %}
+
+    {{ include('@WebProfiler/Profiler/toolbar_item.html.twig', { link: profiler_url, status: collector.hasWarnings ? 'yellow' : '' }) }}
+{% endblock %}
+
+{% block menu %}
+    <span class="label {{ collector.hasWarnings ? 'label-status-warning' }}">
+        <span class="icon">
+            {{ include('@SybaseORM/Collector/icon.svg') }}
+        </span>
+        <strong>Sybase ORM</strong>
+        <span class="count">
+            <span>{{ collector.queryCount }}</span>
+            <span>{{ '%0.2f'|format(collector.totalTime) }} ms</span>
+        </span>
+    </span>
+{% endblock %}
+
+{% block panel %}
+    <h2>Sybase ORM</h2>
+
+    {# --- Summary metrics --- #}
+    <div class="metrics">
+        <div class="metric">
+            <span class="value">{{ collector.queryCount }}</span>
+            <span class="label">Queries</span>
+        </div>
+        <div class="metric">
+            <span class="value">{{ '%0.2f'|format(collector.totalTime) }} <span class="unit">ms</span></span>
+            <span class="label">Total time</span>
+        </div>
+        <div class="metric">
+            <span class="value">{{ collector.hydratedEntities }}</span>
+            <span class="label">Hydrated entities</span>
+        </div>
+        <div class="metric">
+            <span class="value">{{ collector.identityMapSize }}</span>
+            <span class="label">Identity Map size</span>
+        </div>
+        <div class="metric">
+            <span class="value">{{ collector.identityMapHits }}</span>
+            <span class="label">Identity Map hits</span>
+        </div>
+    </div>
+
+    {# --- UnitOfWork --- #}
+    {% set uow = collector.unitOfWork %}
+    {% if uow.persisted > 0 or uow.updated > 0 or uow.removed > 0 %}
+    <h3>Unit of Work</h3>
+    <div class="metrics">
+        <div class="metric">
+            <span class="value">{{ uow.persisted }}</span>
+            <span class="label">Persisted</span>
+        </div>
+        <div class="metric">
+            <span class="value">{{ uow.updated }}</span>
+            <span class="label">Updated</span>
+        </div>
+        <div class="metric">
+            <span class="value">{{ uow.removed }}</span>
+            <span class="label">Removed</span>
+        </div>
+    </div>
+    {% endif %}
+
+    {# --- Connection stats --- #}
+    {% if collector.connectionStats|length > 1 %}
+    <h3>Connections</h3>
+    <table>
+        <thead>
+            <tr>
+                <th>Connection</th>
+                <th class="text-right">Queries</th>
+                <th class="text-right">Time (ms)</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for name, stats in collector.connectionStats %}
+            <tr>
+                <td>{{ name }}</td>
+                <td class="text-right">{{ stats.queries }}</td>
+                <td class="text-right">{{ '%0.2f'|format(stats.time) }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+
+    {# --- Warnings --- #}
+    {% if collector.duplicateQueries|length > 0 %}
+    <h3>
+        <span class="label label-status-warning">⚠</span>
+        Duplicate Queries ({{ collector.duplicateQueries|length }})
+    </h3>
+    <table>
+        <thead>
+            <tr>
+                <th>SQL</th>
+                <th class="text-right">Count</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for sql, count in collector.duplicateQueries %}
+            <tr>
+                <td><code>{{ sql }}</code></td>
+                <td class="text-right">
+                    <span class="label label-status-warning">{{ count }}×</span>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+
+    {% if collector.slowQueries|length > 0 %}
+    <h3>
+        <span class="label label-status-error">⚠</span>
+        Slow Queries (&gt;100ms)
+    </h3>
+    <table>
+        <thead>
+            <tr>
+                <th>#</th>
+                <th>SQL</th>
+                <th>Connection</th>
+                <th class="text-right">Time (ms)</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for query in collector.slowQueries %}
+            <tr>
+                <td>{{ loop.index }}</td>
+                <td><code>{{ query.sql }}</code></td>
+                <td>{{ query.connection }}</td>
+                <td class="text-right">
+                    <span class="label label-status-error">{{ '%0.2f'|format(query.time) }}</span>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+
+    {# --- All queries --- #}
+    <h3>Queries</h3>
+    {% if collector.queries|length == 0 %}
+        <div class="empty">
+            <p>No queries were executed during this request.</p>
+        </div>
+    {% else %}
+    <table>
+        <thead>
+            <tr>
+                <th class="text-right">#</th>
+                <th>SQL</th>
+                <th>Parameters</th>
+                <th>Connection</th>
+                <th class="text-right">Time (ms)</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for query in collector.queries %}
+            <tr class="{{ query.time > 100 ? 'status-error' : (query.time > 50 ? 'status-warning' : '') }}">
+                <td class="text-right">{{ loop.index }}</td>
+                <td>
+                    <code class="sql">{{ query.sql }}</code>
+                    {% if query.backtrace %}
+                    <details>
+                        <summary>Backtrace</summary>
+                        <pre class="sf-dump">{{ query.backtrace }}</pre>
+                    </details>
+                    {% endif %}
+                </td>
+                <td>
+                    {% if query.params|length > 0 %}
+                        {{ profiler_dump(query.params) }}
+                    {% else %}
+                        <em>none</em>
+                    {% endif %}
+                </td>
+                <td>{{ query.connection }}</td>
+                <td class="text-right">{{ '%0.2f'|format(query.time) }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+{% endblock %}
