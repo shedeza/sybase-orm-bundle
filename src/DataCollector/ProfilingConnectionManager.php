@@ -125,7 +125,7 @@ final class ProfilingConnectionManager implements ConnectionManagerInterface
 
             $file = $frame['file'] ?? 'unknown';
             $line = $frame['line'] ?? 0;
-            $function = ($class !== '' ? $class . '::' : '') . ($frame['function'] ?? '');
+            $function = ($class !== '' ? $class . '::' : '') . $frame['function'];
 
             $lines[] = sprintf('%s:%d → %s()', $file, $line, $function);
 

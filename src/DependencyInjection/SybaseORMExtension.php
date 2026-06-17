@@ -71,8 +71,13 @@ final class SybaseORMExtension extends Extension
         $this->registerDialect($container);
         $this->registerTypeCaster($container);
         $this->registerMetadataReader($container, $config);
-        $this->registerHookDispatcher($container);
         $this->registerProxyGenerator($container, $config);
+
+        // Register profiling services (conditional on WebProfilerBundle availability)
+        $this->registerProfilingServices($container);
+
+        // Register hook dispatcher (after profiling, so it can attach the subscriber)
+        $this->registerHookDispatcher($container);
 
         // Register per-connection services (connection manager, identity map, cache, hydrator, uow, em)
         $managerServiceIds = [];
@@ -160,22 +165,6 @@ final class SybaseORMExtension extends Extension
         $cacheWarmerDef->setPublic(false);
         $container->setDefinition(ProxyCacheWarmer::class, $cacheWarmerDef);
 
-        // Register DataCollector and Profiling services (always registered, active in debug)
-        $collectorDef = new Definition(SybaseQueryCollector::class);
-        $collectorDef->addTag('data_collector', [
-            'template' => '@SybaseORM/Collector/sybase_orm.html.twig',
-            'id' => 'sybase_orm',
-        ]);
-        $collectorDef->setPublic(false);
-        $container->setDefinition(SybaseQueryCollector::class, $collectorDef);
-
-        // Register ProfilingEventSubscriber — records UoW operations
-        $profilingSubDef = new Definition(ProfilingEventSubscriber::class, [
-            new Reference(SybaseQueryCollector::class),
-        ]);
-        $profilingSubDef->setPublic(false);
-        $container->setDefinition(ProfilingEventSubscriber::class, $profilingSubDef);
-
         // Register SymfonyEventDispatcherSubscriber if EventDispatcher is available
         if (interface_exists(\Psr\EventDispatcher\EventDispatcherInterface::class)) {
             $eventSubDef = new Definition(\SybaseORM\Hook\SymfonyEventDispatcherSubscriber::class, [
@@ -240,7 +229,12 @@ final class SybaseORMExtension extends Extension
         $definition = new Definition(HookDispatcher::class, [
             new Reference(MetadataReaderInterface::class),
         ]);
-        $definition->addMethodCall('addSubscriber', [new Reference(ProfilingEventSubscriber::class)]);
+
+        // Register ProfilingEventSubscriber only when profiler is available
+        if ($container->hasDefinition(ProfilingEventSubscriber::class)) {
+            $definition->addMethodCall('addSubscriber', [new Reference(ProfilingEventSubscriber::class)]);
+        }
+
         $definition->setPublic(false);
 
         $container->setDefinition(HookDispatcher::class, $definition);
@@ -267,6 +261,33 @@ final class SybaseORMExtension extends Extension
         $definition->setPublic(false);
 
         $container->setDefinition(MigrationManager::class, $definition);
+    }
+
+    /**
+     * Registers the DataCollector and profiling decorator services.
+     * Only active when the Symfony profiler is available (debug mode + web-profiler-bundle).
+     */
+    private function registerProfilingServices(ContainerBuilder $container): void
+    {
+        // Only register when the WebProfilerBundle is available
+        if (!class_exists(\Symfony\Bundle\WebProfilerBundle\WebProfilerBundle::class)) {
+            return;
+        }
+
+        $collectorDef = new Definition(SybaseQueryCollector::class);
+        $collectorDef->addTag('data_collector', [
+            'template' => '@SybaseORM/Collector/sybase_orm.html.twig',
+            'id' => 'sybase_orm',
+        ]);
+        $collectorDef->setPublic(false);
+        $container->setDefinition(SybaseQueryCollector::class, $collectorDef);
+
+        // ProfilingEventSubscriber — records UoW operations in the collector
+        $profilingSubDef = new Definition(ProfilingEventSubscriber::class, [
+            new Reference(SybaseQueryCollector::class),
+        ]);
+        $profilingSubDef->setPublic(false);
+        $container->setDefinition(ProfilingEventSubscriber::class, $profilingSubDef);
     }
 
     private function registerConnectionServices(ContainerBuilder $container, array $globalConfig, string $name, array $connectionConfig, bool $isFirst): void
@@ -300,15 +321,20 @@ final class SybaseORMExtension extends Extension
         $connDef->setPublic(false);
         $container->setDefinition('sybase_orm.connection_manager' . $suffix, $connDef);
 
-        // 1b. Profiling decorator — wraps ConnectionManager in debug mode
-        $profilingConnDef = new Definition(ProfilingConnectionManager::class, [
-            new Reference('sybase_orm.connection_manager' . $suffix),
-            new Reference(SybaseQueryCollector::class),
-            $name,
-            '%kernel.debug%',
-        ]);
-        $profilingConnDef->setPublic(false);
-        $container->setDefinition('sybase_orm.connection_manager.profiling' . $suffix, $profilingConnDef);
+        // 1b. Profiling decorator — wraps ConnectionManager only when profiler is available
+        if ($container->hasDefinition(SybaseQueryCollector::class)) {
+            $profilingConnDef = new Definition(ProfilingConnectionManager::class, [
+                new Reference('sybase_orm.connection_manager' . $suffix),
+                new Reference(SybaseQueryCollector::class),
+                $name,
+                '%kernel.debug%',
+            ]);
+            $profilingConnDef->setPublic(false);
+            $container->setDefinition('sybase_orm.connection_manager.profiling' . $suffix, $profilingConnDef);
+            $connServiceId = 'sybase_orm.connection_manager.profiling' . $suffix;
+        } else {
+            $connServiceId = 'sybase_orm.connection_manager' . $suffix;
+        }
 
         // 2. IdentityMap (per-connection)
         $imDef = new Definition(IdentityMap::class);
@@ -339,9 +365,9 @@ final class SybaseORMExtension extends Extension
         $hydDef->setPublic(false);
         $container->setDefinition('sybase_orm.hydrator' . $suffix, $hydDef);
 
-        // 5. UnitOfWork (per-connection) — uses profiling connection manager
+        // 5. UnitOfWork (per-connection) — uses profiling connection manager when available
         $uowDef = new Definition(UnitOfWork::class, [
-            new Reference('sybase_orm.connection_manager.profiling' . $suffix),
+            new Reference($connServiceId),
             new Reference(MetadataReaderInterface::class),
             new Reference(DialectInterface::class),
             new Reference(TypeCasterInterface::class),
@@ -351,9 +377,9 @@ final class SybaseORMExtension extends Extension
         $uowDef->setPublic(false);
         $container->setDefinition('sybase_orm.unit_of_work' . $suffix, $uowDef);
 
-        // 6. EntityManager (per-connection) — uses profiling connection manager
+        // 6. EntityManager (per-connection) — uses profiling connection manager when available
         $emDef = new Definition(EntityManager::class, [
-            new Reference('sybase_orm.connection_manager.profiling' . $suffix),
+            new Reference($connServiceId),
             new Reference(MetadataReaderInterface::class),
             new Reference(DialectInterface::class),
             new Reference(TypeCasterInterface::class),
