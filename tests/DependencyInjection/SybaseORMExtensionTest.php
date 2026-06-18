@@ -6,12 +6,8 @@ namespace SybaseORM\Bundle\Tests\DependencyInjection;
 
 use PHPUnit\Framework\TestCase;
 use SybaseORM\Bundle\CacheWarmer\ProxyCacheWarmer;
-use SybaseORM\Bundle\Command\CacheClearCommand;
 use SybaseORM\Bundle\Command\InstallCommand;
-use SybaseORM\Bundle\Command\MigrationsGenerateCommand;
-use SybaseORM\Bundle\Command\MigrationsMigrateCommand;
 use SybaseORM\Bundle\Command\ProxyGenerateCommand;
-use SybaseORM\Bundle\Command\SchemaValidateCommand;
 use SybaseORM\Bundle\DependencyInjection\SybaseORMExtension;
 use SybaseORM\Connection\ConnectionManagerInterface;
 use SybaseORM\Dialect\DialectInterface;
@@ -78,12 +74,22 @@ final class SybaseORMExtensionTest extends TestCase
     {
         $this->loadWithDefaultConnection();
 
+        // Bundle-specific commands
         $this->assertTrue($this->container->hasDefinition(InstallCommand::class));
-        $this->assertTrue($this->container->hasDefinition(CacheClearCommand::class));
-        $this->assertTrue($this->container->hasDefinition(SchemaValidateCommand::class));
-        $this->assertTrue($this->container->hasDefinition(MigrationsGenerateCommand::class));
-        $this->assertTrue($this->container->hasDefinition(MigrationsMigrateCommand::class));
         $this->assertTrue($this->container->hasDefinition(ProxyGenerateCommand::class));
+
+        // ORM native commands (via adapter)
+        $this->assertTrue($this->container->hasDefinition('sybase_orm.cmd.migrate'));
+        $this->assertTrue($this->container->hasDefinition('sybase_orm.cmd.migrate_status'));
+        $this->assertTrue($this->container->hasDefinition('sybase_orm.cmd.migrate_generate'));
+        $this->assertTrue($this->container->hasDefinition('sybase_orm.cmd.migrate_rollback'));
+        $this->assertTrue($this->container->hasDefinition('sybase_orm.cmd.migrate_reset'));
+        $this->assertTrue($this->container->hasDefinition('sybase_orm.cmd.migrate_fresh'));
+        $this->assertTrue($this->container->hasDefinition('sybase_orm.cmd.migrate_preview'));
+        $this->assertTrue($this->container->hasDefinition('sybase_orm.cmd.schema_validate'));
+        $this->assertTrue($this->container->hasDefinition('sybase_orm.cmd.cache_clear'));
+        $this->assertTrue($this->container->hasDefinition('sybase_orm.cmd.make_entity'));
+        $this->assertTrue($this->container->hasDefinition('sybase_orm.cmd.orm_info'));
     }
 
     public function testCommandsHaveConsoleCommandTag(): void
@@ -92,18 +98,20 @@ final class SybaseORMExtensionTest extends TestCase
 
         $commands = [
             InstallCommand::class,
-            CacheClearCommand::class,
-            SchemaValidateCommand::class,
-            MigrationsGenerateCommand::class,
-            MigrationsMigrateCommand::class,
             ProxyGenerateCommand::class,
+            'sybase_orm.cmd.migrate',
+            'sybase_orm.cmd.migrate_status',
+            'sybase_orm.cmd.cache_clear',
+            'sybase_orm.cmd.schema_validate',
+            'sybase_orm.cmd.make_entity',
+            'sybase_orm.cmd.orm_info',
         ];
 
-        foreach ($commands as $commandClass) {
-            $definition = $this->container->getDefinition($commandClass);
+        foreach ($commands as $serviceId) {
+            $definition = $this->container->getDefinition($serviceId);
             $this->assertTrue(
                 $definition->hasTag('console.command'),
-                \sprintf('%s should have console.command tag', $commandClass),
+                \sprintf('%s should have console.command tag', $serviceId),
             );
         }
     }

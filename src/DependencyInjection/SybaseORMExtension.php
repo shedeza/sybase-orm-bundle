@@ -7,12 +7,8 @@ namespace SybaseORM\Bundle\DependencyInjection;
 use Psr\Log\LoggerInterface;
 use Redis;
 use SybaseORM\Bundle\CacheWarmer\ProxyCacheWarmer;
-use SybaseORM\Bundle\Command\CacheClearCommand;
 use SybaseORM\Bundle\Command\InstallCommand;
-use SybaseORM\Bundle\Command\MigrationsGenerateCommand;
-use SybaseORM\Bundle\Command\MigrationsMigrateCommand;
 use SybaseORM\Bundle\Command\ProxyGenerateCommand;
-use SybaseORM\Bundle\Command\SchemaValidateCommand;
 use SybaseORM\Bundle\DataCollector\SybaseQueryCollector;
 use SybaseORM\Cache\CacheManager;
 use SybaseORM\Cache\CacheManagerInterface;
@@ -296,38 +292,12 @@ final class SybaseORMExtension extends Extension
 
     private function registerCommands(ContainerBuilder $container, array $config): void
     {
+        // Install command (always available, bundle-specific)
         $installDef = new Definition(InstallCommand::class, ['%kernel.project_dir%']);
         $installDef->addTag('console.command');
         $container->setDefinition(InstallCommand::class, $installDef);
 
-        $schemaValidateDef = new Definition(SchemaValidateCommand::class, [
-            new Reference(MetadataReaderInterface::class),
-            new Reference(ConnectionManagerInterface::class),
-            $config['entity_directories'],
-        ]);
-        $schemaValidateDef->addTag('console.command');
-        $container->setDefinition(SchemaValidateCommand::class, $schemaValidateDef);
-
-        $cacheClearDef = new Definition(CacheClearCommand::class, [
-            new Reference(CacheManagerInterface::class),
-        ]);
-        $cacheClearDef->addTag('console.command');
-        $container->setDefinition(CacheClearCommand::class, $cacheClearDef);
-
-        $migGenDef = new Definition(MigrationsGenerateCommand::class, [
-            new Reference(MigrationManager::class),
-            new Reference(MetadataReaderInterface::class),
-            $config['entity_directories'],
-        ]);
-        $migGenDef->addTag('console.command');
-        $container->setDefinition(MigrationsGenerateCommand::class, $migGenDef);
-
-        $migMigDef = new Definition(MigrationsMigrateCommand::class, [
-            new Reference(MigrationManager::class),
-        ]);
-        $migMigDef->addTag('console.command');
-        $container->setDefinition(MigrationsMigrateCommand::class, $migMigDef);
-
+        // Proxy generate command (bundle-specific, uses EntityDiscovery)
         $proxyGenDef = new Definition(ProxyGenerateCommand::class, [
             new Reference(ProxyGenerator::class),
             new Reference(MetadataReaderInterface::class),
@@ -335,6 +305,112 @@ final class SybaseORMExtension extends Extension
         ]);
         $proxyGenDef->addTag('console.command');
         $container->setDefinition(ProxyGenerateCommand::class, $proxyGenDef);
+
+        // --- ORM native commands (adapted to Symfony Console) ---
+
+        // make:entity
+        $makeEntityDef = new Definition(\SybaseORM\Console\Command\MakeEntityCommand::class, [
+            $config['entity_directories'][0] ?? '%kernel.project_dir%/src/Entity',
+            'App\\Entity',
+        ]);
+        $makeEntityDef->setPublic(false);
+        $container->setDefinition('sybase_orm.cmd.make_entity.inner', $makeEntityDef);
+        $this->registerOrmCommandAdapter($container, 'sybase_orm.cmd.make_entity', 'sybase:make:entity', 'sybase_orm.cmd.make_entity.inner');
+
+        // orm:info
+        $ormInfoDef = new Definition(\SybaseORM\Console\Command\OrmInfoCommand::class, [
+            new Reference(MetadataReaderInterface::class),
+            [], // entity classes will be resolved at runtime via entity directories
+        ]);
+        $ormInfoDef->setPublic(false);
+        $container->setDefinition('sybase_orm.cmd.orm_info.inner', $ormInfoDef);
+        $this->registerOrmCommandAdapter($container, 'sybase_orm.cmd.orm_info', 'sybase:orm:info', 'sybase_orm.cmd.orm_info.inner');
+
+        // cache:clear (ORM native)
+        $cacheClearOrmDef = new Definition(\SybaseORM\Console\Command\CacheClearCommand::class, [
+            $config['proxy_directory'],
+            $config['proxy_directory'],
+        ]);
+        $cacheClearOrmDef->setPublic(false);
+        $container->setDefinition('sybase_orm.cmd.cache_clear.inner', $cacheClearOrmDef);
+        $this->registerOrmCommandAdapter($container, 'sybase_orm.cmd.cache_clear', 'sybase:cache:clear', 'sybase_orm.cmd.cache_clear.inner');
+
+        // migrate
+        $migrateDef = new Definition(\SybaseORM\Console\Command\MigrateCommand::class, [
+            new Reference(MigrationManager::class),
+        ]);
+        $migrateDef->setPublic(false);
+        $container->setDefinition('sybase_orm.cmd.migrate.inner', $migrateDef);
+        $this->registerOrmCommandAdapter($container, 'sybase_orm.cmd.migrate', 'sybase:migrate', 'sybase_orm.cmd.migrate.inner');
+
+        // migrate:status
+        $migrateStatusDef = new Definition(\SybaseORM\Console\Command\MigrateStatusCommand::class, [
+            new Reference(MigrationManager::class),
+        ]);
+        $migrateStatusDef->setPublic(false);
+        $container->setDefinition('sybase_orm.cmd.migrate_status.inner', $migrateStatusDef);
+        $this->registerOrmCommandAdapter($container, 'sybase_orm.cmd.migrate_status', 'sybase:migrate:status', 'sybase_orm.cmd.migrate_status.inner');
+
+        // migrate:generate
+        $migrateGenDef = new Definition(\SybaseORM\Console\Command\MigrateGenerateCommand::class, [
+            new Reference(MigrationManager::class),
+        ]);
+        $migrateGenDef->setPublic(false);
+        $container->setDefinition('sybase_orm.cmd.migrate_generate.inner', $migrateGenDef);
+        $this->registerOrmCommandAdapter($container, 'sybase_orm.cmd.migrate_generate', 'sybase:migrate:generate', 'sybase_orm.cmd.migrate_generate.inner');
+
+        // migrate:rollback
+        $migrateRollbackDef = new Definition(\SybaseORM\Console\Command\MigrateRollbackCommand::class, [
+            new Reference(MigrationManager::class),
+        ]);
+        $migrateRollbackDef->setPublic(false);
+        $container->setDefinition('sybase_orm.cmd.migrate_rollback.inner', $migrateRollbackDef);
+        $this->registerOrmCommandAdapter($container, 'sybase_orm.cmd.migrate_rollback', 'sybase:migrate:rollback', 'sybase_orm.cmd.migrate_rollback.inner');
+
+        // migrate:reset
+        $migrateResetDef = new Definition(\SybaseORM\Console\Command\MigrateResetCommand::class, [
+            new Reference(MigrationManager::class),
+        ]);
+        $migrateResetDef->setPublic(false);
+        $container->setDefinition('sybase_orm.cmd.migrate_reset.inner', $migrateResetDef);
+        $this->registerOrmCommandAdapter($container, 'sybase_orm.cmd.migrate_reset', 'sybase:migrate:reset', 'sybase_orm.cmd.migrate_reset.inner');
+
+        // migrate:fresh
+        $migrateFreshDef = new Definition(\SybaseORM\Console\Command\MigrateFreshCommand::class, [
+            new Reference(MigrationManager::class),
+        ]);
+        $migrateFreshDef->setPublic(false);
+        $container->setDefinition('sybase_orm.cmd.migrate_fresh.inner', $migrateFreshDef);
+        $this->registerOrmCommandAdapter($container, 'sybase_orm.cmd.migrate_fresh', 'sybase:migrate:fresh', 'sybase_orm.cmd.migrate_fresh.inner');
+
+        // migrate:preview
+        $migratePreviewDef = new Definition(\SybaseORM\Console\Command\MigratePreviewCommand::class, [
+            new Reference(MigrationManager::class),
+        ]);
+        $migratePreviewDef->setPublic(false);
+        $container->setDefinition('sybase_orm.cmd.migrate_preview.inner', $migratePreviewDef);
+        $this->registerOrmCommandAdapter($container, 'sybase_orm.cmd.migrate_preview', 'sybase:migrate:preview', 'sybase_orm.cmd.migrate_preview.inner');
+
+        // schema:validate (ORM native)
+        $schemaValidateDef = new Definition(\SybaseORM\Console\Command\SchemaValidateCommand::class, [
+            new Reference(MigrationManager::class),
+        ]);
+        $schemaValidateDef->setPublic(false);
+        $container->setDefinition('sybase_orm.cmd.schema_validate.inner', $schemaValidateDef);
+        $this->registerOrmCommandAdapter($container, 'sybase_orm.cmd.schema_validate', 'sybase:schema:validate', 'sybase_orm.cmd.schema_validate.inner');
+    }
+
+    /**
+     * Registers an ORM command adapter as a Symfony console command.
+     */
+    private function registerOrmCommandAdapter(ContainerBuilder $container, string $serviceId, string $symfonyName, string $innerServiceId): void
+    {
+        $adapterDef = new Definition(\SybaseORM\Bundle\Command\OrmCommandAdapter::class, [
+            new Reference($innerServiceId),
+            $symfonyName,
+        ]);
+        $adapterDef->addTag('console.command', ['command' => $symfonyName]);
+        $container->setDefinition($serviceId, $adapterDef);
     }
 
     private function registerConnectionServices(ContainerBuilder $container, array $globalConfig, string $name, array $connectionConfig, bool $isFirst): void
