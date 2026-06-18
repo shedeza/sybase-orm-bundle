@@ -14,7 +14,7 @@ flowchart TD
     B --> C[Configurar variables de entorno]
     C --> D[php bin/console cache:clear --env=prod]
     D --> E[php bin/console sybase:proxy:generate]
-    E --> F[php bin/console sybase:migrations:migrate --env=prod]
+    E --> F[php bin/console sybase:migrate --env=prod]
     F --> G[php bin/console sybase:schema:validate --env=prod]
     G --> H[Verificar estado]
     H --> I[Activar nuevo release]
@@ -75,7 +75,7 @@ Esto genera las clases proxy de lazy loading en el directorio de caché. En prod
 ### 6. Ejecutar migraciones
 
 ```bash
-php bin/console sybase:migrations:migrate --env=prod
+php bin/console sybase:migrate --env=prod
 ```
 
 > **Importante:** Siempre ejecuta migraciones antes de activar el nuevo código. Si una migración falla, el código antiguo sigue activo.
@@ -122,7 +122,7 @@ echo "==> Generating proxies..."
 php bin/console sybase:proxy:generate --env=prod
 
 echo "==> Running migrations..."
-php bin/console sybase:migrations:migrate --env=prod
+php bin/console sybase:migrate --env=prod
 
 echo "==> Validating schema..."
 php bin/console sybase:schema:validate --env=prod
@@ -209,7 +209,12 @@ ln -sfn /var/www/releases/YYYYMMDDHHMMSS_anterior /var/www/current
 sudo systemctl reload php8.2-fpm
 ```
 
-Para migraciones, actualmente no hay rollback automático. Se recomienda:
+Para migraciones, usa el comando de rollback:
+```bash
+php bin/console sybase:migrate:rollback --env=prod
+```
+
+Alternativamente:
 1. Tener backups antes de migrar
 2. Preparar scripts SQL de rollback manuales para migraciones críticas
 
@@ -239,7 +244,7 @@ jobs:
             composer install --no-dev --optimize-autoloader
             php bin/console cache:clear --env=prod
             php bin/console sybase:proxy:generate --env=prod
-            php bin/console sybase:migrations:migrate --env=prod
+            php bin/console sybase:migrate --env=prod
             sudo systemctl reload php8.2-fpm
 ```
 

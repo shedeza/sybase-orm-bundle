@@ -49,7 +49,7 @@ flowchart TD
 # DUMP DATABASE production TO '/backups/pre-migration-20240115.dmp'
 
 # 2. Ejecutar migraciones
-php bin/console sybase:migrations:migrate --env=prod
+php bin/console sybase:migrate --env=prod
 
 # 3. Validar
 php bin/console sybase:schema:validate --env=prod

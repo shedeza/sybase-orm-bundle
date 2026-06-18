@@ -157,23 +157,82 @@ sybase_orm:
 
 Valor por defecto: `'%kernel.project_dir%/sybase_ase/migrations'`
 
+## Permisos de Archivos y Directorios
+
+Controla los permisos con los que se crean los archivos generados (proxies, caché de metadatos) y sus directorios:
+
+```yaml
+sybase_orm:
+    file_permissions: 0o666
+    directory_permissions: 0o777
+```
+
+| Parámetro | Tipo | Default | Descripción |
+|-----------|------|---------|-------------|
+| `file_permissions` | integer (octal) | `0o666` | Permisos para archivos generados (proxies, metadata cache) |
+| `directory_permissions` | integer (octal) | `0o777` | Permisos para directorios creados (proxy dir, cache dir) |
+
+Estos valores se pasan a `MetadataReader` y `ProxyGenerator` para que los archivos generados tengan los permisos correctos en el sistema de archivos.
+
 ## Configuración de Caché
+
+El bundle soporta caché de segundo nivel con Redis y un patrón de circuit breaker para tolerancia a fallos:
 
 ```yaml
 sybase_orm:
     cache:
         enabled: true
-        adapter: 'cache.app'           # Service ID del adaptador de cache
-        dsn: 'redis://localhost:6379'  # DSN para adaptadores standalone
-        default_ttl: 3600             # TTL por defecto en segundos
+        adapter: redis                  # Tipo de adaptador: 'redis' o null
+        default_ttl: 3600              # TTL por defecto en segundos
+        prefix: 'sybase_orm:'          # Prefijo de claves en Redis
+        failure_threshold: 3            # Fallos consecutivos antes de abrir el circuit breaker
+        cooldown_seconds: 60            # Segundos de espera antes de reintentar tras apertura del circuit breaker
 ```
 
 | Parámetro | Tipo | Default | Descripción |
 |-----------|------|---------|-------------|
-| `enabled` | boolean | `false` | Habilita/deshabilita la caché |
-| `adapter` | string | `null` | ID del servicio del adaptador de caché Symfony |
-| `dsn` | string | `null` | DSN para crear adaptador standalone |
+| `enabled` | boolean | `false` | Habilita/deshabilita la caché de segundo nivel |
+| `adapter` | string | `null` | Tipo de adaptador de caché (`redis` o `null`) |
+| `dsn` | string | `null` | DSN para adaptador (deprecado, usar nodo `redis`) |
 | `default_ttl` | integer | `3600` | TTL por defecto en segundos |
+| `prefix` | string | `'sybase_orm:'` | Prefijo para las claves en Redis |
+| `failure_threshold` | integer | `3` | Número de fallos consecutivos antes de deshabilitar la caché (circuit breaker) |
+| `cooldown_seconds` | integer | `60` | Segundos de espera antes de reintentar la caché después de que el circuit breaker se activa |
+
+### Circuit Breaker
+
+El circuit breaker protege la aplicación cuando Redis no está disponible:
+
+1. Si la conexión a Redis falla `failure_threshold` veces consecutivas, el circuit breaker se abre
+2. Mientras está abierto, las operaciones de caché se omiten sin intentar conexión a Redis
+3. Después de `cooldown_seconds`, se intenta reconectar automáticamente
+4. Si la reconexión es exitosa, el circuit breaker se cierra y la caché vuelve a funcionar
+
+## Configuración de Redis
+
+Cuando `cache.adapter` es `redis`, configura la conexión Redis con el nodo `redis`:
+
+```yaml
+sybase_orm:
+    redis:
+        host: '127.0.0.1'
+        port: 6379
+        password: null
+        database: 0
+        timeout: 2.0
+        dsn: null
+```
+
+| Parámetro | Tipo | Default | Descripción |
+|-----------|------|---------|-------------|
+| `host` | string | `'127.0.0.1'` | Host del servidor Redis |
+| `port` | integer | `6379` | Puerto del servidor Redis |
+| `password` | string | `null` | Contraseña de autenticación Redis |
+| `database` | integer | `0` | Índice de base de datos Redis (0-15) |
+| `timeout` | float | `2.0` | Timeout de conexión en segundos |
+| `dsn` | string | `null` | DSN completo (override de host/port). Formato: `redis://[:password@]host:port/database` |
+
+Si se proporciona `dsn`, los valores de `host`, `port`, `password` y `database` se extraen del DSN.
 
 ## Variables de Entorno
 
@@ -187,7 +246,9 @@ Tabla resumen de variables de entorno usadas:
 | `SYBASE_DATABASE` | `mi_app` | Base de datos (si no usas URL) |
 | `SYBASE_USERNAME` | `sa` | Usuario (si no usas URL) |
 | `SYBASE_PASSWORD` | `secret` | Contraseña (si no usas URL) |
-| `REDIS_URL` | `redis://localhost:6379` | Redis para caché (opcional) |
+| `REDIS_HOST` | `127.0.0.1` | Host de Redis para caché |
+| `REDIS_PORT` | `6379` | Puerto de Redis |
+| `REDIS_PASSWORD` | `secret` | Contraseña de Redis |
 
 ## Ejemplo Completo de Producción
 
@@ -196,7 +257,6 @@ Tabla resumen de variables de entorno usadas:
 sybase_orm:
     connection:
         url: '%env(DATABASE_URL)%'
-        charset_conversion: false
 
     entity_directories:
         - '%kernel.project_dir%/src/Entity'
@@ -204,10 +264,23 @@ sybase_orm:
     proxy_directory: '%kernel.cache_dir%/sybase_orm/proxies'
     migrations_directory: '%kernel.project_dir%/sybase_ase/migrations'
 
+    file_permissions: 0o666
+    directory_permissions: 0o777
+
     cache:
         enabled: true
-        adapter: 'cache.app'
-        default_ttl: 7200
+        adapter: redis
+        default_ttl: 3600
+        prefix: 'sybase_orm:'
+        failure_threshold: 3
+        cooldown_seconds: 60
+
+    redis:
+        host: '%env(REDIS_HOST)%'
+        port: '%env(int:REDIS_PORT)%'
+        password: '%env(REDIS_PASSWORD)%'
+        database: 0
+        timeout: 2.0
 ```
 
 ---

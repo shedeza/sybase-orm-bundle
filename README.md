@@ -12,8 +12,9 @@ Symfony bundle providing full framework integration for the [shedeza/sybase-orm]
 
 - **Full DI Integration** — All ORM services registered and autowireable out of the box
 - **Multi-Connection Support** — Configure multiple named Sybase ASE connections
-- **Console Commands** — Install, migrations, proxy generation, cache clear, schema validation
-- **Web Profiler** — Query collector for the Symfony debug toolbar
+- **13 Console Commands** — Install, migrations (generate, execute, rollback, reset, fresh, preview, status), proxy generation, cache clear, schema validation, entity scaffolding, ORM info
+- **Web Profiler** — Native ORM instrumentation with detailed metrics: queries, hydrations, identity map hits/misses, lazy loads, cache hits/misses, transactions, rollbacks, flush time
+- **Redis Second-Level Cache** — Redis-based cache with circuit breaker pattern for fault tolerance
 - **Repository Autowiring** — Custom repositories auto-registered via compiler pass
 - **Symfony Flex** — Automatic bundle registration and configuration scaffolding
 - **PHP 8.1+ Attributes** — Modern attribute-based command configuration
@@ -24,7 +25,7 @@ Symfony bundle providing full framework integration for the [shedeza/sybase-orm]
 |-------------|---------|
 | PHP | >= 8.1 |
 | Symfony | 6.x or 7.x |
-| shedeza/sybase-orm | ^3.0 |
+| shedeza/sybase-orm | ^3.6 |
 | PHP Extension | pdo_dblib |
 | Database | Sybase ASE |
 
@@ -168,12 +169,27 @@ sybase_orm:
     # Directory for migration files
     migrations_directory: '%kernel.project_dir%/sybase_ase/migrations'
 
-    # Cache configuration
+    # File/directory permissions for generated files (proxies, metadata cache)
+    file_permissions: 0o666
+    directory_permissions: 0o777
+
+    # Cache configuration (second-level cache with circuit breaker)
     cache:
         enabled: true
-        adapter: 'cache.app'                # Symfony cache adapter service ID
-        dsn: 'redis://localhost:6379'       # Cache DSN (for standalone adapters)
+        adapter: redis                      # Cache adapter: 'redis' or null
         default_ttl: 3600                   # Default cache TTL in seconds
+        prefix: 'sybase_orm:'              # Key prefix for Redis entries
+        failure_threshold: 3                # Failures before circuit breaker opens
+        cooldown_seconds: 60                # Seconds before retrying after circuit opens
+
+    # Redis connection (when cache.adapter is 'redis')
+    redis:
+        host: '127.0.0.1'
+        port: 6379
+        password: null
+        database: 0
+        timeout: 2.0
+        dsn: null                           # Full DSN overrides host/port if set
 ```
 
 > **Note:** Use either `connection` (single) or `connections` (multiple named), not both. When `url` is provided, individual parameters (host, port, etc.) are ignored.
@@ -183,11 +199,18 @@ sybase_orm:
 | Command | Description |
 |---------|-------------|
 | `sybase:install` | Scaffolds configuration files and registers the bundle |
-| `sybase:migrations:generate` | Generates a migration from entity/schema diff |
-| `sybase:migrations:migrate` | Executes all pending migrations |
-| `sybase:proxy:generate` | Generates lazy-loading proxy classes |
-| `sybase:cache:clear` | Clears metadata and entity caches |
+| `sybase:make:entity` | Generates a new entity class with mapping attributes |
+| `sybase:orm:info` | Displays information about mapped entities |
+| `sybase:migrate` | Executes all pending migrations |
+| `sybase:migrate:status` | Shows current migration status |
+| `sybase:migrate:generate` | Generates a migration from entity/schema diff |
+| `sybase:migrate:rollback` | Rolls back the last migration batch |
+| `sybase:migrate:reset` | Rolls back all migrations |
+| `sybase:migrate:fresh` | Drops all tables and re-runs all migrations |
+| `sybase:migrate:preview` | Previews SQL for pending migrations without executing |
 | `sybase:schema:validate` | Validates entity mapping against the database |
+| `sybase:cache:clear` | Clears metadata and entity caches |
+| `sybase:proxy:generate` | Generates lazy-loading proxy classes |
 
 ## Registered Services
 
@@ -211,10 +234,20 @@ Custom entity repositories annotated with `#[Entity(repositoryClass: ...)]` are 
 
 ## Web Profiler Integration
 
-In `dev` environment, the bundle registers a `SybaseQueryCollector` that displays:
-- Number of queries executed per request
-- Total query execution time
+In `dev` environment, the bundle uses **native ORM instrumentation** (since v2.0) to collect metrics without decorator overhead. The `SybaseQueryCollector` reads from `InstrumentationCollector` and displays in the Symfony debug toolbar and profiler panel:
+
+- Number of queries executed per request and total query time
 - Individual query details (SQL, parameters, timing, connection name)
+- Hydration count and collection loads
+- Identity map hits and misses
+- Lazy load count
+- Cache hits, misses, and writes (second-level cache)
+- Transaction and rollback count
+- Flush time
+- Duplicate query detection
+- Slow query highlighting
+
+In production, `NullInstrumentation` is used (zero overhead).
 
 ## Testing
 

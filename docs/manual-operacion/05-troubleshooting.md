@@ -165,8 +165,8 @@ tsql -C | grep charset
 php bin/console sybase:schema:validate
 
 # Generar y ejecutar migraciones
-php bin/console sybase:migrations:generate
-php bin/console sybase:migrations:migrate
+php bin/console sybase:migrate:generate
+php bin/console sybase:migrate
 ```
 
 ---
@@ -296,7 +296,7 @@ GO
 | `Unable to connect` | Servidor inaccesible | Verificar red y FreeTDS |
 | `Login failed` | Credenciales incorrectas | Verificar .env |
 | `Connection timed out` | Timeout bajo o red lenta | Aumentar timeout en freetds.conf |
-| `Table does not exist` | Migración pendiente | `sybase:migrations:migrate` |
+| `Table does not exist` | Migración pendiente | `sybase:migrate` |
 | `Column not found` | Mapping incorrecto | Verificar `#[Column]` |
 | `Class not found` (proxy) | Proxies no generados | `sybase:proxy:generate` |
 | Datos desactualizados | Caché obsoleta | `sybase:cache:clear` |

@@ -54,8 +54,15 @@ sybase_orm:
         url: '%env(DATABASE_URL)%'
     cache:
         enabled: true
-        dsn: '%env(REDIS_URL)%'
+        adapter: redis
         default_ttl: 3600
+        prefix: 'sybase_orm:'
+        failure_threshold: 3
+        cooldown_seconds: 60
+    redis:
+        host: '%env(REDIS_HOST)%'
+        port: '%env(int:REDIS_PORT)%'
+        password: '%env(REDIS_PASSWORD)%'
 ```
 
 ## Variables de Entorno
@@ -65,7 +72,9 @@ sybase_orm:
 | Variable | Requerida | Default | Descripción |
 |----------|-----------|---------|-------------|
 | `DATABASE_URL` | ✅ Sí | — | URL de conexión principal a Sybase ASE |
-| `REDIS_URL` | ❌ Opcional | — | URL de Redis para caché |
+| `REDIS_HOST` | ❌ Opcional | `127.0.0.1` | Host de Redis para caché |
+| `REDIS_PORT` | ❌ Opcional | `6379` | Puerto de Redis |
+| `REDIS_PASSWORD` | ❌ Opcional | — | Contraseña de Redis |
 | `APP_ENV` | ✅ Sí | `dev` | Entorno de Symfony |
 | `APP_SECRET` | ✅ Sí | — | Secret de Symfony (no específico del bundle) |
 

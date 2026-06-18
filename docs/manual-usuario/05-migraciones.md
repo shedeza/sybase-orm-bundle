@@ -23,6 +23,20 @@ sybase_orm:
     migrations_directory: '%kernel.project_dir%/sybase_ase/migrations'
 ```
 
+## Comandos de Migración
+
+El bundle proporciona un conjunto completo de comandos para gestionar migraciones:
+
+| Comando | Descripción |
+|---------|-------------|
+| `sybase:migrate` | Ejecuta las migraciones pendientes |
+| `sybase:migrate:status` | Muestra el estado de cada migración (aplicada/pendiente) |
+| `sybase:migrate:generate` | Genera una migración desde los cambios en entidades |
+| `sybase:migrate:rollback` | Revierte el último lote de migraciones |
+| `sybase:migrate:reset` | Revierte todas las migraciones |
+| `sybase:migrate:fresh` | Elimina todas las tablas y re-ejecuta todas las migraciones |
+| `sybase:migrate:preview` | Muestra el SQL sin ejecutar |
+
 ## Flujo de Trabajo
 
 ### 1. Modificar entidades
@@ -44,7 +58,7 @@ class Product
 ### 2. Generar la migración
 
 ```bash
-php bin/console sybase:migrations:generate
+php bin/console sybase:migrate:generate
 ```
 
 Salida esperada:
@@ -63,14 +77,22 @@ El comando:
 - Genera un archivo de migración si detecta diferencias
 - Si no hay cambios, informa que no se generó ninguna migración
 
-### 3. Revisar la migración
+### 3. Previsualizar el SQL
+
+Antes de ejecutar, puedes ver qué SQL se aplicará:
+
+```bash
+php bin/console sybase:migrate:preview
+```
+
+### 4. Revisar la migración
 
 Revisa el archivo generado antes de ejecutarlo para asegurar que los cambios son correctos.
 
-### 4. Ejecutar la migración
+### 5. Ejecutar la migración
 
 ```bash
-php bin/console sybase:migrations:migrate
+php bin/console sybase:migrate
 ```
 
 Salida esperada:
@@ -83,6 +105,34 @@ Sybase ORM - Execute Migrations
  * Version20240115120000.php
 ```
 
+### 6. Verificar el estado
+
+```bash
+php bin/console sybase:migrate:status
+```
+
+## Revertir Migraciones
+
+### Revertir el último lote
+
+```bash
+php bin/console sybase:migrate:rollback
+```
+
+### Revertir todas las migraciones
+
+```bash
+php bin/console sybase:migrate:reset
+```
+
+### Reiniciar desde cero (solo desarrollo)
+
+```bash
+php bin/console sybase:migrate:fresh
+```
+
+> **Precaución:** `sybase:migrate:fresh` elimina todas las tablas y re-ejecuta todas las migraciones. No debe usarse en producción.
+
 ## Migraciones en Diferentes Entornos
 
 ### Desarrollo
@@ -90,8 +140,8 @@ Sybase ORM - Execute Migrations
 En desarrollo, puedes generar y ejecutar migraciones libremente:
 
 ```bash
-php bin/console sybase:migrations:generate
-php bin/console sybase:migrations:migrate
+php bin/console sybase:migrate:generate
+php bin/console sybase:migrate
 ```
 
 ### Producción
@@ -99,11 +149,14 @@ php bin/console sybase:migrations:migrate
 En producción, solo ejecuta migraciones ya generadas y revisadas:
 
 ```bash
-# Parte del proceso de deploy
-php bin/console sybase:migrations:migrate --env=prod
+# Previsualizar antes de aplicar
+php bin/console sybase:migrate:preview --env=prod
+
+# Ejecutar
+php bin/console sybase:migrate --env=prod
 ```
 
-> **Importante:** Nunca ejecutes `sybase:migrations:generate` en producción. Genera las migraciones en desarrollo y guárdalas en el control de versiones.
+> **Importante:** Nunca ejecutes `sybase:migrate:generate` en producción. Genera las migraciones en desarrollo y guárdalas en el control de versiones.
 
 ## Control de Versiones
 
@@ -133,8 +186,9 @@ Sybase ORM - Execute Migrations
 
 En este caso:
 1. Verifica el estado del esquema manualmente
-2. Corrige o elimina la migración problemática
-3. Vuelve a intentar
+2. Usa `sybase:migrate:status` para ver qué migraciones se aplicaron
+3. Corrige o elimina la migración problemática
+4. Vuelve a intentar
 
 ## Validación del Esquema
 

@@ -38,11 +38,23 @@ sybase_orm (root)
 ├── entity_directories (array de scalars, default: ['%kernel.project_dir%/src/Entity'])
 ├── proxy_directory (scalar, default: '%kernel.cache_dir%/sybase_orm/proxies')
 ├── migrations_directory (scalar, default: '%kernel.project_dir%/sybase_ase/migrations')
-└── cache (array, con defaults)
-    ├── enabled (boolean, default: false)
-    ├── adapter (scalar, default: null)
-    ├── dsn (scalar, default: null)
-    └── default_ttl (integer, default: 3600)
+├── file_permissions (integer, default: 0o666)
+├── directory_permissions (integer, default: 0o777)
+├── cache (array, con defaults)
+│   ├── enabled (boolean, default: false)
+│   ├── adapter (scalar, default: null)
+│   ├── dsn (scalar, default: null) [deprecado]
+│   ├── default_ttl (integer, default: 3600)
+│   ├── prefix (scalar, default: 'sybase_orm:')
+│   ├── failure_threshold (integer, default: 3)
+│   └── cooldown_seconds (integer, default: 60)
+└── redis (array, con defaults)
+    ├── host (scalar, default: '127.0.0.1')
+    ├── port (integer, default: 6379)
+    ├── password (scalar, default: null)
+    ├── database (integer, default: 0)
+    ├── timeout (float, default: 2.0)
+    └── dsn (scalar, default: null)
 ```
 
 ## Validación Personalizada
@@ -76,6 +88,74 @@ El nodo `connections` usa `useAttributeAsKey('name')` y `arrayPrototype()`, lo q
 ->end()
 ```
 
+## Nodos de Permisos
+
+Los permisos de archivos y directorios se aplican a proxies generados y caché de metadatos:
+
+```php
+->integerNode('file_permissions')
+    ->defaultValue(0o666)
+    ->info('File permissions for generated proxies and metadata cache (octal).')
+->end()
+->integerNode('directory_permissions')
+    ->defaultValue(0o777)
+    ->info('Directory permissions for proxy and cache directories (octal).')
+->end()
+```
+
+Estos valores se pasan al `MetadataReader` y `ProxyGenerator`:
+
+```php
+$definition = new Definition(MetadataReader::class, [
+    $config['proxy_directory'],
+    true,
+    $config['directory_permissions'] ?? 0o777,
+    $config['file_permissions'] ?? 0o666,
+]);
+```
+
+## Nodo Cache con Circuit Breaker
+
+El nodo `cache` incluye configuración para el patrón circuit breaker:
+
+```php
+->arrayNode('cache')
+    ->addDefaultsIfNotSet()
+    ->children()
+        ->booleanNode('enabled')->defaultFalse()->end()
+        ->scalarNode('adapter')->defaultNull()->end()
+        ->scalarNode('dsn')->defaultNull()->end()
+        ->integerNode('default_ttl')->defaultValue(3600)->end()
+        ->scalarNode('prefix')->defaultValue('sybase_orm:')->end()
+        ->integerNode('failure_threshold')->defaultValue(3)->end()
+        ->integerNode('cooldown_seconds')->defaultValue(60)->end()
+    ->end()
+->end()
+```
+
+- `failure_threshold`: Número de fallos consecutivos antes de que el circuit breaker deshabilite la caché
+- `cooldown_seconds`: Tiempo de espera antes de reintentar la conexión a Redis
+
+## Nodo Redis
+
+El nodo `redis` centraliza la configuración de conexión a Redis:
+
+```php
+->arrayNode('redis')
+    ->addDefaultsIfNotSet()
+    ->children()
+        ->scalarNode('host')->defaultValue('127.0.0.1')->end()
+        ->integerNode('port')->defaultValue(6379)->end()
+        ->scalarNode('password')->defaultNull()->end()
+        ->integerNode('database')->defaultValue(0)->end()
+        ->floatNode('timeout')->defaultValue(2.0)->end()
+        ->scalarNode('dsn')->defaultNull()->end()
+    ->end()
+->end()
+```
+
+Cuando se proporciona `dsn`, los valores de `host`, `port`, `password` y `database` se extraen automáticamente. El factory method `createRedisConnection()` del Extension maneja esta lógica.
+
 ## Valores por Defecto
 
 ### entity_directories
@@ -97,7 +177,7 @@ El nodo `connections` usa `useAttributeAsKey('name')` y `arrayPrototype()`, lo q
 ->end()
 ```
 
-`addDefaultsIfNotSet()` asegura que el nodo `cache` siempre existe en la configuración procesada, incluso si el usuario no lo define.
+`addDefaultsIfNotSet()` asegura que los nodos `cache` y `redis` siempre existen en la configuración procesada, incluso si el usuario no los define.
 
 ## Procesamiento en el Extension
 

@@ -6,14 +6,25 @@
 
 ## Resumen de Comandos
 
+El bundle proporciona 13 comandos de consola:
+
 | Comando | Descripción |
 |---------|-------------|
 | `sybase:install` | Instala y configura el bundle en el proyecto |
-| `sybase:cache:clear` | Limpia la caché del ORM |
-| `sybase:migrations:generate` | Genera una migración desde los cambios en entidades |
-| `sybase:migrations:migrate` | Ejecuta las migraciones pendientes |
-| `sybase:proxy:generate` | Genera las clases proxy para lazy loading |
+| `sybase:make:entity` | Genera una nueva clase de entidad con atributos de mapeo |
+| `sybase:orm:info` | Muestra información sobre las entidades mapeadas |
+| `sybase:migrate` | Ejecuta las migraciones pendientes |
+| `sybase:migrate:status` | Muestra el estado actual de las migraciones |
+| `sybase:migrate:generate` | Genera una migración desde los cambios en entidades |
+| `sybase:migrate:rollback` | Revierte el último lote de migraciones |
+| `sybase:migrate:reset` | Revierte todas las migraciones |
+| `sybase:migrate:fresh` | Elimina todas las tablas y re-ejecuta todas las migraciones |
+| `sybase:migrate:preview` | Muestra el SQL de migraciones pendientes sin ejecutarlas |
 | `sybase:schema:validate` | Valida el mapeo de entidades contra el esquema de la BD |
+| `sybase:cache:clear` | Limpia la caché del ORM |
+| `sybase:proxy:generate` | Genera las clases proxy para lazy loading |
+
+> Los comandos de migración y esquema son adaptaciones de los comandos nativos de `shedeza/sybase-orm` ^3.6 a la consola de Symfony mediante `OrmCommandAdapter`.
 
 ---
 
@@ -56,50 +67,146 @@ SybaseORM - Instalación
 
 ---
 
-## sybase:cache:clear
+## sybase:make:entity
 
-Limpia todas las cachés del ORM: identity map, caché de segundo nivel y caché de metadatos en memoria.
+Genera una nueva clase de entidad con los atributos de mapeo `#[Entity]`, `#[Id]` y `#[Column]`.
 
 ### Sintaxis
 
 ```bash
-php bin/console sybase:cache:clear
+php bin/console sybase:make:entity
 ```
 
-### Acciones que realiza
-
-1. Limpia el identity map (entidades en memoria)
-2. Limpia la caché de segundo nivel (si está habilitada)
-3. Limpia la caché de metadatos en memoria estática
+El comando es interactivo: solicita el nombre de la entidad, la tabla, y las columnas.
 
 ### Ejemplo de salida
 
 ```
-Sybase ORM - Clear Cache
+Sybase ORM - Make Entity
 =========================
 
-Cleared identity map and second-level cache.
-Cleared metadata memory cache.
+Entity class name (e.g. Product): Category
+Table name [categories]:
 
- [OK] All SybaseORM caches cleared.
+ Add fields (leave blank to finish):
+
+ Field name: name
+ Field type (string, int, bool, float, decimal, datetime) [string]:
+ Column name [name]:
+
+ Field name: slug
+ Field type [string]:
+ Column name [slug]:
+
+ Field name:
+
+ [OK] Entity created: src/Entity/Category.php
 ```
-
-### Cuándo usarlo
-
-- Después de cambios en los atributos de mapeo de entidades
-- Si experimentas datos desactualizados en desarrollo
-- Como parte del proceso de deploy en producción
 
 ---
 
-## sybase:migrations:generate
+## sybase:orm:info
+
+Muestra información sobre todas las entidades mapeadas: clase, tabla, número de columnas y repositorio asociado.
+
+### Sintaxis
+
+```bash
+php bin/console sybase:orm:info
+```
+
+### Ejemplo de salida
+
+```
+Sybase ORM - Entity Info
+=========================
+
+ Found 5 mapped entity class(es):
+
+ ┌───────────────────────────┬─────────────┬─────────┬─────────────────────────────────────┐
+ │ Entity                    │ Table       │ Columns │ Repository                          │
+ ├───────────────────────────┼─────────────┼─────────┼─────────────────────────────────────┤
+ │ App\Entity\Product        │ products    │ 5       │ App\Repository\ProductRepository    │
+ │ App\Entity\Category       │ categories  │ 3       │ App\Repository\CategoryRepository   │
+ │ App\Entity\Order          │ orders      │ 8       │ App\Repository\OrderRepository      │
+ │ App\Entity\User           │ users       │ 6       │ —                                   │
+ │ App\Entity\AuditLog       │ audit_log   │ 4       │ —                                   │
+ └───────────────────────────┴─────────────┴─────────┴─────────────────────────────────────┘
+```
+
+---
+
+## sybase:migrate
+
+Ejecuta todas las migraciones pendientes en la base de datos.
+
+### Sintaxis
+
+```bash
+php bin/console sybase:migrate
+```
+
+### Ejemplo de salida (con migraciones pendientes)
+
+```
+Sybase ORM - Execute Migrations
+=================================
+
+ [OK] Executed 3 migration(s):
+
+ * Version20240110090000.php
+ * Version20240112140000.php
+ * Version20240115143022.php
+```
+
+### Ejemplo de salida (sin migraciones pendientes)
+
+```
+Sybase ORM - Execute Migrations
+=================================
+
+ [OK] No pending migrations to execute.
+```
+
+---
+
+## sybase:migrate:status
+
+Muestra el estado actual de las migraciones: cuáles están ejecutadas, cuáles pendientes.
+
+### Sintaxis
+
+```bash
+php bin/console sybase:migrate:status
+```
+
+### Ejemplo de salida
+
+```
+Sybase ORM - Migration Status
+===============================
+
+ ┌──────────────────────────────┬──────────┬─────────────────────┐
+ │ Migration                    │ Status   │ Executed At          │
+ ├──────────────────────────────┼──────────┼─────────────────────┤
+ │ Version20240110090000.php    │ Applied  │ 2024-01-10 09:01:23 │
+ │ Version20240112140000.php    │ Applied  │ 2024-01-12 14:05:11 │
+ │ Version20240115143022.php    │ Pending  │ —                   │
+ └──────────────────────────────┴──────────┴─────────────────────┘
+
+ Applied: 2 | Pending: 1
+```
+
+---
+
+## sybase:migrate:generate
 
 Genera un nuevo archivo de migración comparando los metadatos de las entidades con el esquema actual de la base de datos.
 
 ### Sintaxis
 
 ```bash
-php bin/console sybase:migrations:generate
+php bin/console sybase:migrate:generate
 ```
 
 ### Requisitos
@@ -131,82 +238,112 @@ Found 8 entity class(es).
 
 ---
 
-## sybase:migrations:migrate
+## sybase:migrate:rollback
 
-Ejecuta todas las migraciones pendientes en la base de datos.
-
-### Sintaxis
-
-```bash
-php bin/console sybase:migrations:migrate
-```
-
-### Ejemplo de salida (con migraciones pendientes)
-
-```
-Sybase ORM - Execute Migrations
-=================================
-
- [OK] Executed 3 migration(s):
-
- * Version20240110090000.php
- * Version20240112140000.php
- * Version20240115143022.php
-```
-
-### Ejemplo de salida (sin migraciones pendientes)
-
-```
-Sybase ORM - Execute Migrations
-=================================
-
- [OK] No pending migrations to execute.
-```
-
-### Ejemplo de salida (error)
-
-```
-Sybase ORM - Execute Migrations
-=================================
-
- [ERROR] Migration failed: Table 'orders' already exists
-```
-
----
-
-## sybase:proxy:generate
-
-Genera las clases proxy para lazy loading de todas las entidades mapeadas.
+Revierte el último lote de migraciones ejecutadas.
 
 ### Sintaxis
 
 ```bash
-php bin/console sybase:proxy:generate
+php bin/console sybase:migrate:rollback
 ```
-
-### Acciones que realiza
-
-1. Escanea los directorios de entidades configurados
-2. Identifica todas las clases con el atributo `#[Entity]`
-3. Genera una clase proxy para cada entidad en el directorio de proxies configurado
 
 ### Ejemplo de salida
 
 ```
-Sybase ORM - Generate Proxies
+Sybase ORM - Rollback Migrations
+==================================
+
+ [OK] Rolled back 2 migration(s):
+
+ * Version20240115143022.php
+ * Version20240112140000.php
+```
+
+---
+
+## sybase:migrate:reset
+
+Revierte **todas** las migraciones ejecutadas, dejando la base de datos en su estado inicial.
+
+### Sintaxis
+
+```bash
+php bin/console sybase:migrate:reset
+```
+
+### Ejemplo de salida
+
+```
+Sybase ORM - Reset Migrations
 ===============================
 
-Generated proxy: App\Entity\Proxy\ProductProxy
-Generated proxy: App\Entity\Proxy\CategoryProxy
-Generated proxy: App\Entity\Proxy\OrderProxy
+ [WARNING] This will rollback ALL migrations.
 
- [OK] Generated 3 proxy class(es).
+ [OK] Reset complete. Rolled back 5 migration(s).
+```
+
+> **Precaución:** Este comando no debe usarse en producción. Es útil en desarrollo para reiniciar el esquema desde cero.
+
+---
+
+## sybase:migrate:fresh
+
+Elimina todas las tablas de la base de datos y re-ejecuta todas las migraciones desde el inicio.
+
+### Sintaxis
+
+```bash
+php bin/console sybase:migrate:fresh
+```
+
+### Ejemplo de salida
+
+```
+Sybase ORM - Fresh Migration
+==============================
+
+ [WARNING] This will DROP all tables and re-run all migrations.
+
+Dropped all tables.
+Running migrations...
+
+ [OK] Fresh migration complete. Executed 5 migration(s).
+```
+
+> **Precaución:** Este comando destruye todos los datos. Solo debe usarse en desarrollo o testing.
+
+---
+
+## sybase:migrate:preview
+
+Muestra el SQL que ejecutarían las migraciones pendientes sin aplicarlas a la base de datos.
+
+### Sintaxis
+
+```bash
+php bin/console sybase:migrate:preview
+```
+
+### Ejemplo de salida
+
+```
+Sybase ORM - Preview Migrations
+=================================
+
+ Version20240115143022.php:
+
+    ALTER TABLE products ADD sku VARCHAR(50) NOT NULL
+    CREATE INDEX idx_products_sku ON products(sku)
+
+ [OK] 1 pending migration(s) previewed. No changes applied.
 ```
 
 ### Cuándo usarlo
 
-- **Producción:** Siempre como parte del proceso de deploy
-- **Desarrollo:** No es estrictamente necesario (se generan on-demand), pero mejora el rendimiento
+- Antes de ejecutar migraciones en staging o producción para revisar el SQL
+- En CI/CD como paso de verificación
+- Para generar scripts SQL que se ejecutarán manualmente por un DBA
 
 ---
 
@@ -264,6 +401,78 @@ Sybase ORM - Schema Validation
 - Después de ejecutar migraciones, para confirmar que todo está sincronizado
 - En CI/CD como paso de verificación
 - Al depurar errores de mapeo
+
+---
+
+## sybase:cache:clear
+
+Limpia todas las cachés del ORM: identity map, caché de segundo nivel y caché de metadatos en memoria.
+
+### Sintaxis
+
+```bash
+php bin/console sybase:cache:clear
+```
+
+### Acciones que realiza
+
+1. Limpia el identity map (entidades en memoria)
+2. Limpia la caché de segundo nivel (Redis, si está habilitada)
+3. Limpia la caché de metadatos en memoria estática
+
+### Ejemplo de salida
+
+```
+Sybase ORM - Clear Cache
+=========================
+
+Cleared identity map and second-level cache.
+Cleared metadata memory cache.
+
+ [OK] All SybaseORM caches cleared.
+```
+
+### Cuándo usarlo
+
+- Después de cambios en los atributos de mapeo de entidades
+- Si experimentas datos desactualizados en desarrollo
+- Como parte del proceso de deploy en producción
+
+---
+
+## sybase:proxy:generate
+
+Genera las clases proxy para lazy loading de todas las entidades mapeadas.
+
+### Sintaxis
+
+```bash
+php bin/console sybase:proxy:generate
+```
+
+### Acciones que realiza
+
+1. Escanea los directorios de entidades configurados
+2. Identifica todas las clases con el atributo `#[Entity]`
+3. Genera una clase proxy para cada entidad en el directorio de proxies configurado
+
+### Ejemplo de salida
+
+```
+Sybase ORM - Generate Proxies
+===============================
+
+Generated proxy: App\Entity\Proxy\ProductProxy
+Generated proxy: App\Entity\Proxy\CategoryProxy
+Generated proxy: App\Entity\Proxy\OrderProxy
+
+ [OK] Generated 3 proxy class(es).
+```
+
+### Cuándo usarlo
+
+- **Producción:** Siempre como parte del proceso de deploy
+- **Desarrollo:** No es estrictamente necesario (se generan on-demand), pero mejora el rendimiento
 
 ---
 

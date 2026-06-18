@@ -10,9 +10,11 @@
 |------------|---------------|-------|
 | PHP | 8.1 | 8.2+ recomendado para Symfony 7 |
 | Symfony | 6.0 o 7.0 | Framework Bundle requerido |
+| shedeza/sybase-orm | ^3.6 | Librería ORM con instrumentación nativa |
 | Sybase ASE | 15.x | Adaptive Server Enterprise |
 | FreeTDS | 0.91+ | Librería de protocolo TDS |
 | PDO Extension | pdo_dblib | Driver PHP para Sybase via FreeTDS |
+| Redis | 6.x+ (opcional) | Para caché de segundo nivel |
 
 ## Instalación de FreeTDS
 

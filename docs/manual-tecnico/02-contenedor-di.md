@@ -13,13 +13,15 @@ La clase `SybaseORMExtension` es el corazón del bundle. Implementa `Symfony\Com
 ```mermaid
 flowchart TD
     A[load configs] --> B{¿Hay conexiones?}
-    B -->|No| C[Return vacío - no registrar nada]
+    B -->|No| C[Solo registrar InstallCommand]
     B -->|Sí| D[Registrar servicios compartidos]
-    D --> E[Registrar servicios por conexión]
-    E --> F[Registrar EntityManagerRegistry]
-    F --> G[Registrar MigrationManager]
-    G --> H[Registrar comandos]
-    H --> I[Registrar DataCollector]
+    D --> E[Registrar instrumentación]
+    E --> F[Registrar servicios por conexión]
+    F --> G[Registrar EntityManagerRegistry]
+    G --> H[Registrar MigrationManager]
+    H --> I[Registrar 13 comandos]
+    I --> J[Registrar ProxyCacheWarmer]
+    J --> K[Registrar DataCollector si WebProfiler disponible]
 ```
 
 ### Normalización de Conexiones
@@ -47,6 +49,8 @@ Estos servicios se registran una vez y son compartidos por todas las conexiones:
 | `MetadataReader` | `MetadataReaderInterface` | Lectura de metadatos de entidades |
 | `HookDispatcher` | — | Despacho de hooks/eventos |
 | `ProxyGenerator` | — | Generación de clases proxy |
+| `InstrumentationCollector` | `OrmInstrumentationInterface` | Instrumentación nativa del ORM (dev) |
+| `NullInstrumentation` | `OrmInstrumentationInterface` | No-op en producción |
 
 ## Servicios Por Conexión
 
@@ -54,12 +58,19 @@ Para cada conexión configurada, se registra un conjunto completo de servicios c
 
 | Service ID | Clase | Dependencias principales |
 |------------|-------|--------------------------|
-| `sybase_orm.connection_manager.{name}` | `ConnectionManager` | Config de conexión, Logger |
+| `sybase_orm.connection_manager.{name}` | `ConnectionManager` | Config, Logger, OrmInstrumentationInterface |
 | `sybase_orm.identity_map.{name}` | `IdentityMap` | — |
-| `sybase_orm.cache_manager.{name}` | `CacheManager` | IdentityMap |
+| `sybase_orm.cache_manager.{name}` | `CacheManager` | IdentityMap, RedisCacheAdapter, Logger, failure_threshold, cooldown_seconds |
 | `sybase_orm.hydrator.{name}` | `Hydrator` | MetadataReader, TypeCaster, IdentityMap, UoW, ProxyGenerator |
 | `sybase_orm.unit_of_work.{name}` | `UnitOfWork` | ConnectionManager, MetadataReader, Dialect, TypeCaster, IdentityMap, HookDispatcher |
 | `sybase_orm.entity_manager.{name}` | `EntityManager` | ConnectionManager, MetadataReader, Dialect, TypeCaster, Hydrator, UoW, IdentityMap, HookDispatcher, CacheManager, Logger |
+
+### Servicios Redis (cuando cache.adapter = 'redis')
+
+| Service ID | Clase | Descripción |
+|------------|-------|-------------|
+| `sybase_orm.redis.{name}` | `Redis` | Conexión PHP Redis |
+| `sybase_orm.cache_adapter.{name}` | `RedisCacheAdapter` | Adaptador de caché con prefijo |
 
 ### Aliases de la Conexión Principal
 
@@ -69,15 +80,16 @@ La primera conexión definida (generalmente `default`) recibe aliases directos a
 if ($isFirst) {
     $container->setAlias(ConnectionManagerInterface::class, 'sybase_orm.connection_manager.' . $name);
     $container->setAlias(EntityManagerInterface::class, 'sybase_orm.entity_manager.' . $name);
+    $container->setAlias(CacheManagerInterface::class, 'sybase_orm.cache_manager.' . $name);
     // ... etc.
 }
 ```
 
 Esto permite autowiring directo con las interfaces sin especificar conexión.
 
-## ConnectionManager: Factory Method
+## ConnectionManager: Factory Method con Instrumentación
 
-Cuando se usa `url` en la configuración, el ConnectionManager se crea via factory method:
+Cuando se usa `url` en la configuración, el ConnectionManager se crea via factory method. Desde v2.0, recibe `OrmInstrumentationInterface` como argumento nativo:
 
 ```php
 $connDef = new Definition(ConnectionManager::class);
@@ -86,22 +98,64 @@ $connDef->setArguments([
     $connectionConfig['url'],
     $connectionConfig['charset_conversion'] ?? false,
     $loggerRef,
+    $instrumentationRef,  // OrmInstrumentationInterface
 ]);
 ```
 
-El método factory parsea la URL en runtime (cuando las variables de entorno ya están resueltas):
+El método factory:
 
 ```php
 public static function createConnectionManagerFromUrl(
     string $url,
     bool $charsetConversion = false,
-    ?LoggerInterface $logger = null
+    ?LoggerInterface $logger = null,
+    ?OrmInstrumentationInterface $instrumentation = null,
 ): ConnectionManager {
     $config = ConnectionUrlParser::parse($url);
     if ($charsetConversion) {
         $config['charset_conversion'] = true;
     }
-    return new ConnectionManager($config, $logger);
+    return new ConnectionManager($config, $logger, $instrumentation);
+}
+```
+
+## CacheManager con Circuit Breaker
+
+El `CacheManager` recibe los parámetros de circuit breaker directamente:
+
+```php
+$cacheDef = new Definition(CacheManager::class, [
+    new Reference('sybase_orm.identity_map' . $suffix),
+    $secondLevelRef,        // RedisCacheAdapter o null
+    $loggerRef,
+    $cacheConfig['failure_threshold'] ?? 3,
+    $cacheConfig['cooldown_seconds'] ?? 60,
+]);
+```
+
+## Redis Connection Factory
+
+La conexión Redis se crea mediante un factory method que soporta tanto parámetros individuales como DSN:
+
+```php
+public static function createRedisConnection(
+    string $host = '127.0.0.1',
+    int $port = 6379,
+    ?string $password = null,
+    int $database = 0,
+    float $timeout = 2.0,
+    ?string $dsn = null,
+): Redis {
+    $redis = new Redis();
+    if ($dsn !== null) {
+        $parts = parse_url($dsn);
+        $host = $parts['host'] ?? $host;
+        $port = $parts['port'] ?? $port;
+        // ...
+    }
+    $redis->connect($host, $port, $timeout);
+    // auth + select...
+    return $redis;
 }
 ```
 
@@ -158,6 +212,31 @@ $hydDef->addMethodCall('setEntityManager', [
 ]);
 ```
 
+## Registro de Comandos (13 comandos)
+
+El bundle registra 13 comandos:
+
+- **Bundle-specific** (implementación propia): `sybase:install`, `sybase:proxy:generate`
+- **ORM nativos** (adaptados via `OrmCommandAdapter`): los 11 restantes
+
+Los comandos nativos del ORM (shedeza/sybase-orm ^3.6) se adaptan a la consola de Symfony mediante `OrmCommandAdapter`:
+
+```php
+private function registerOrmCommandAdapter(
+    ContainerBuilder $container,
+    string $serviceId,
+    string $symfonyName,
+    string $innerServiceId
+): void {
+    $adapterDef = new Definition(OrmCommandAdapter::class, [
+        new Reference($innerServiceId),
+        $symfonyName,
+    ]);
+    $adapterDef->addTag('console.command', ['command' => $symfonyName]);
+    $container->setDefinition($serviceId, $adapterDef);
+}
+```
+
 ## Parámetros del Contenedor
 
 El bundle registra estos parámetros para uso de los comandos:
@@ -170,10 +249,13 @@ El bundle registra estos parámetros para uso de los comandos:
 
 ## Fail-Safe: Sin Conexión Configurada
 
-Si no hay ninguna conexión configurada, el Extension retorna temprano sin registrar servicios:
+Si no hay ninguna conexión configurada, el Extension retorna temprano registrando solo `InstallCommand`:
 
 ```php
 if (empty($connections)) {
+    $installDef = new Definition(InstallCommand::class, ['%kernel.project_dir%']);
+    $installDef->addTag('console.command');
+    $container->setDefinition(InstallCommand::class, $installDef);
     return;
 }
 ```

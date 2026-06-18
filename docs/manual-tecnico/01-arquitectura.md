@@ -77,8 +77,9 @@ graph TB
 | `SybaseORMExtension` | Procesa configuración y registra servicios en el DI |
 | `Configuration` | Define el árbol de configuración válido |
 | `RepositoryAutowiringCompilerPass` | Auto-registra repositorios custom |
-| Commands (6) | Herramientas CLI para desarrollo y operación |
-| `SybaseQueryCollector` | Recolecta datos de queries para el profiler |
+| Commands (13) | Herramientas CLI para desarrollo y operación |
+| `SybaseQueryCollector` | Lee métricas del `InstrumentationCollector` para el profiler |
+| `OrmCommandAdapter` | Adapta comandos nativos del ORM a la consola Symfony |
 
 ### Capa 2: ORM Core (shedeza/sybase-orm)
 
@@ -93,10 +94,12 @@ graph TB
 | `SybaseDialect` | Genera SQL específico para Sybase ASE |
 | `TypeCaster` | Convierte tipos PHP ↔ tipos de BD |
 | `IdentityMap` | Mantiene instancias únicas por entidad |
-| `CacheManager` | Gestiona caché de identity map y segundo nivel |
+| `CacheManager` | Gestiona caché de identity map y segundo nivel (con circuit breaker) |
 | `ProxyGenerator` | Genera clases proxy para lazy loading |
 | `MigrationManager` | Gestiona archivos y ejecución de migraciones |
 | `HookDispatcher` | Sistema de hooks/eventos del ORM |
+| `InstrumentationCollector` | Instrumentación nativa — recolecta métricas de todos los componentes |
+| `RedisCacheAdapter` | Adaptador de caché de segundo nivel sobre Redis |
 
 ### Capa 3: Infraestructura
 
@@ -110,7 +113,7 @@ graph TB
 
 ```mermaid
 graph LR
-    A[shedeza/sybase-orm-bundle] --> B[shedeza/sybase-orm ^3.0]
+    A[shedeza/sybase-orm-bundle] --> B[shedeza/sybase-orm ^3.6]
     A --> C[symfony/framework-bundle ^6.0|^7.0]
     A --> D[symfony/console ^6.0|^7.0]
     A --> E[symfony/http-foundation ^6.0|^7.0]

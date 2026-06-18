@@ -17,7 +17,7 @@ sequenceDiagram
     participant UoW as UnitOfWork
     participant CM as ConnectionManager
     participant DB as Sybase ASE
-    participant DC as DataCollector
+    participant DC as InstrumentationCollector
 
     App->>EM: find(Product::class, 42)
     EM->>IM: get(Product::class, 42)
@@ -36,7 +36,7 @@ sequenceDiagram
             EM->>Dial: buildSelectQuery(metadata, criteria)
             Dial-->>EM: SQL string
             EM->>CM: executeQuery(sql, params)
-            CM->>DC: addQuery(sql, params, time)
+            CM->>DC: recordQuery(sql, params, time, connection)
             CM->>DB: PDO::prepare + execute
             DB-->>CM: PDOStatement
             CM-->>EM: result rows

@@ -8,31 +8,50 @@
 
 | Herramienta | Entorno | Descripción |
 |-------------|---------|-------------|
-| Symfony Web Profiler | dev | Toolbar y panel detallado de queries |
+| Symfony Web Profiler | dev | Toolbar y panel con métricas completas del ORM |
 | Logs de Symfony | todos | Monolog con queries y errores |
-| SybaseQueryCollector | dev | Métricas de queries por request |
+| InstrumentationCollector | dev | Instrumentación nativa del ORM (queries, hydrations, cache, transactions) |
+| SybaseQueryCollector | dev | DataCollector que lee del InstrumentationCollector |
 | Health checks | prod | Verificación de conectividad |
 
 ## Symfony Web Profiler (Desarrollo)
 
-En el entorno `dev`, el `SybaseQueryCollector` proporciona información en la debug toolbar:
+En el entorno `dev`, el bundle utiliza **instrumentación nativa del ORM** (desde v2.0) para recolectar métricas sin overhead de decoradores. El `SybaseQueryCollector` lee del `InstrumentationCollector` y proporciona información detallada en la debug toolbar y el panel del profiler.
 
 ### Información visible en la toolbar
 
 - **Número de queries** ejecutadas en el request
 - **Tiempo total** de ejecución de queries
+- **Indicador visual** de warnings (queries duplicadas, queries lentas, lazy loads excesivos, rollbacks)
 
-### Panel del Profiler
+### Panel del Profiler — Métricas globales
 
-Al hacer clic en el indicador de la toolbar, se muestra:
+| Métrica | Descripción |
+|---------|-------------|
+| Queries | Total de queries y tiempo acumulado |
+| Hydrations | Número de hidrataciones realizadas |
+| Identity Map hits/misses | Aciertos y fallos en el mapa de identidad |
+| Lazy loads | Cargas lazy ejecutadas (posible indicador N+1) |
+| Cache hits/misses/writes | Estadísticas de la caché de segundo nivel |
+| Transactions | Transacciones iniciadas |
+| Rollbacks | Rollbacks ejecutados |
+| Flush time | Tiempo total de operaciones flush |
+
+### Panel del Profiler — Detalle de queries
 
 | Columna | Descripción |
 |---------|-------------|
 | # | Número secuencial de la query |
 | SQL | Sentencia SQL ejecutada |
-| Params | Número de parámetros bound |
+| Params | Parámetros bound (con VarDumper) |
 | Time | Tiempo de ejecución (ms) |
 | Connection | Nombre de la conexión utilizada |
+
+### Secciones adicionales
+
+- **Queries duplicadas**: muestra queries SQL repetidas en el mismo request
+- **Queries lentas**: queries que superan el umbral de 100ms
+- **Estadísticas por conexión**: desglose de queries y tiempo por cada conexión configurada
 
 ## Logs
 

@@ -12,7 +12,7 @@ Antes de instalar el bundle, asegúrate de cumplir con los siguientes requisitos
 |-----------|---------------|-------|
 | PHP | 8.1 | Con extensiones `pdo` y `pdo_dblib` |
 | Symfony | 6.0 o 7.0 | Framework Bundle requerido |
-| shedeza/sybase-orm | 3.0 | Se instala automáticamente como dependencia |
+| shedeza/sybase-orm | ^3.6 | Se instala automáticamente como dependencia |
 | Sybase ASE | 15.x+ | Servidor de base de datos |
 | FreeTDS | 0.91+ | Driver de conexión a Sybase |
 
@@ -113,13 +113,20 @@ Para verificar que el bundle se instaló correctamente:
 # Verificar que el bundle está registrado
 php bin/console debug:container --tag=console.command | grep sybase
 
-# Debería mostrar los comandos del bundle:
+# Debería mostrar los 13 comandos del bundle:
 # sybase:install
-# sybase:cache:clear
-# sybase:migrations:generate
-# sybase:migrations:migrate
-# sybase:proxy:generate
+# sybase:make:entity
+# sybase:orm:info
+# sybase:migrate
+# sybase:migrate:status
+# sybase:migrate:generate
+# sybase:migrate:rollback
+# sybase:migrate:reset
+# sybase:migrate:fresh
+# sybase:migrate:preview
 # sybase:schema:validate
+# sybase:cache:clear
+# sybase:proxy:generate
 ```
 
 ## Opciones del Comando sybase:install
