@@ -17,6 +17,7 @@ use SybaseORM\Connection\ConnectionManagerInterface;
 use SybaseORM\Dialect\DialectInterface;
 use SybaseORM\Hook\HookDispatcher;
 use SybaseORM\Hydrator\HydratorInterface;
+use SybaseORM\Instrumentation\OrmInstrumentationInterface;
 use SybaseORM\Metadata\MetadataReaderInterface;
 use SybaseORM\ORM\EntityManagerInterface;
 use SybaseORM\ORM\EntityManagerRegistry;
@@ -203,6 +204,13 @@ final class SybaseORMExtensionTest extends TestCase
 
         $definition = $this->container->getDefinition('sybase_orm.connection_manager.default');
         $this->assertNull($definition->getFactory());
+    }
+
+    public function testInstrumentationIsRegistered(): void
+    {
+        $this->loadWithDefaultConnection();
+
+        $this->assertTrue($this->container->has(OrmInstrumentationInterface::class));
     }
 
     private function loadWithDefaultConnection(): void

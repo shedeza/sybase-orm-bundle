@@ -23,13 +23,19 @@
             <span>{{ '%0.2f'|format(collector.totalTime) }} ms</span>
         </div>
         <div class="sf-toolbar-info-piece">
-            <b>Hydrated</b>
-            <span>{{ collector.hydratedEntities }}</span>
+            <b>Hydrations</b>
+            <span>{{ collector.hydrations }}</span>
         </div>
         <div class="sf-toolbar-info-piece">
             <b>Identity Map</b>
-            <span>{{ collector.identityMapSize }} entities ({{ collector.identityMapHits }} hits)</span>
+            <span>{{ collector.identityHits }} hits / {{ collector.identityMisses }} misses</span>
         </div>
+        {% if collector.lazyLoads > 0 %}
+        <div class="sf-toolbar-info-piece">
+            <b>Lazy loads</b>
+            <span class="sf-toolbar-status {{ collector.lazyLoads > 5 ? 'sf-toolbar-status-yellow' }}">{{ collector.lazyLoads }}</span>
+        </div>
+        {% endif %}
         {% if collector.duplicateQueries|length > 0 %}
         <div class="sf-toolbar-info-piece">
             <b>Duplicates</b>
@@ -63,7 +69,7 @@
 {% block panel %}
     <h2>Sybase ORM</h2>
 
-    {# --- Summary metrics --- #}
+    {# ── Summary metrics ── #}
     <div class="metrics">
         <div class="metric">
             <span class="value">{{ collector.queryCount }}</span>
@@ -71,43 +77,75 @@
         </div>
         <div class="metric">
             <span class="value">{{ '%0.2f'|format(collector.totalTime) }} <span class="unit">ms</span></span>
-            <span class="label">Total time</span>
+            <span class="label">Query time</span>
         </div>
         <div class="metric">
-            <span class="value">{{ collector.hydratedEntities }}</span>
-            <span class="label">Hydrated entities</span>
+            <span class="value">{{ collector.hydrations }}</span>
+            <span class="label">Hydrations</span>
         </div>
         <div class="metric">
-            <span class="value">{{ collector.identityMapSize }}</span>
-            <span class="label">Identity Map size</span>
+            <span class="value">{{ collector.identityHits }} / {{ collector.identityMisses }}</span>
+            <span class="label">Identity hits/misses</span>
         </div>
         <div class="metric">
-            <span class="value">{{ collector.identityMapHits }}</span>
-            <span class="label">Identity Map hits</span>
+            <span class="value">{{ collector.lazyLoads }}</span>
+            <span class="label">Lazy loads</span>
+        </div>
+        <div class="metric">
+            <span class="value">{{ collector.flushes }}</span>
+            <span class="label">Flushes</span>
         </div>
     </div>
 
-    {# --- UnitOfWork --- #}
-    {% set uow = collector.unitOfWork %}
-    {% if uow.persisted > 0 or uow.updated > 0 or uow.removed > 0 %}
-    <h3>Unit of Work</h3>
+    {# ── Cache stats ── #}
+    {% if collector.cacheHits > 0 or collector.cacheMisses > 0 or collector.cacheWrites > 0 %}
+    <h3>Second-Level Cache</h3>
     <div class="metrics">
         <div class="metric">
-            <span class="value">{{ uow.persisted }}</span>
-            <span class="label">Persisted</span>
+            <span class="value">{{ collector.cacheHits }}</span>
+            <span class="label">Hits</span>
         </div>
         <div class="metric">
-            <span class="value">{{ uow.updated }}</span>
-            <span class="label">Updated</span>
+            <span class="value">{{ collector.cacheMisses }}</span>
+            <span class="label">Misses</span>
         </div>
         <div class="metric">
-            <span class="value">{{ uow.removed }}</span>
-            <span class="label">Removed</span>
+            <span class="value">{{ collector.cacheWrites }}</span>
+            <span class="label">Writes</span>
         </div>
+        {% if (collector.cacheHits + collector.cacheMisses) > 0 %}
+        <div class="metric">
+            <span class="value">{{ '%0.1f'|format(collector.cacheHits / (collector.cacheHits + collector.cacheMisses) * 100) }}%</span>
+            <span class="label">Hit ratio</span>
+        </div>
+        {% endif %}
     </div>
     {% endif %}
 
-    {# --- Connection stats --- #}
+    {# ── Transactions ── #}
+    {% if collector.transactions > 0 or collector.rollbacks > 0 %}
+    <h3>Transactions</h3>
+    <div class="metrics">
+        <div class="metric">
+            <span class="value">{{ collector.transactions }}</span>
+            <span class="label">Transactions</span>
+        </div>
+        {% if collector.rollbacks > 0 %}
+        <div class="metric">
+            <span class="value {{ collector.rollbacks > 0 ? 'status-error' }}">{{ collector.rollbacks }}</span>
+            <span class="label">Rollbacks</span>
+        </div>
+        {% endif %}
+        {% if collector.totalFlushTime > 0 %}
+        <div class="metric">
+            <span class="value">{{ '%0.2f'|format(collector.totalFlushTime) }} ms</span>
+            <span class="label">Flush time</span>
+        </div>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    {# ── Connection stats ── #}
     {% if collector.connectionStats|length > 1 %}
     <h3>Connections</h3>
     <table>
@@ -130,7 +168,15 @@
     </table>
     {% endif %}
 
-    {# --- Warnings --- #}
+    {# ── Warnings ── #}
+    {% if collector.lazyLoads > 5 %}
+    <h3>
+        <span class="label label-status-warning">⚠</span>
+        Excessive Lazy Loading ({{ collector.lazyLoads }} loads)
+    </h3>
+    <p class="text-muted">Consider using eager loading or JOIN fetches to reduce N+1 queries.</p>
+    {% endif %}
+
     {% if collector.duplicateQueries|length > 0 %}
     <h3>
         <span class="label label-status-warning">⚠</span>
@@ -177,7 +223,7 @@
                 <td><code>{{ query.sql }}</code></td>
                 <td>{{ query.connection }}</td>
                 <td class="text-right">
-                    <span class="label label-status-error">{{ '%0.2f'|format(query.time) }}</span>
+                    <span class="label label-status-error">{{ '%0.2f'|format(query.time_ms) }}</span>
                 </td>
             </tr>
             {% endfor %}
@@ -185,7 +231,7 @@
     </table>
     {% endif %}
 
-    {# --- All queries --- #}
+    {# ── All queries ── #}
     <h3>Queries</h3>
     {% if collector.queries|length == 0 %}
         <div class="empty">
@@ -204,16 +250,10 @@
         </thead>
         <tbody>
             {% for query in collector.queries %}
-            <tr class="{{ query.time > 100 ? 'status-error' : (query.time > 50 ? 'status-warning' : '') }}">
+            <tr class="{{ (query.time_ms ?? 0) > 100 ? 'status-error' : ((query.time_ms ?? 0) > 50 ? 'status-warning' : '') }}">
                 <td class="text-right">{{ loop.index }}</td>
                 <td>
                     <code class="sql">{{ query.sql }}</code>
-                    {% if query.backtrace %}
-                    <details>
-                        <summary>Backtrace</summary>
-                        <pre class="sf-dump">{{ query.backtrace }}</pre>
-                    </details>
-                    {% endif %}
                 </td>
                 <td>
                     {% if query.params is not empty %}
@@ -223,7 +263,7 @@
                     {% endif %}
                 </td>
                 <td>{{ query.connection }}</td>
-                <td class="text-right">{{ '%0.2f'|format(query.time) }}</td>
+                <td class="text-right">{{ '%0.2f'|format(query.time_ms ?? 0) }}</td>
             </tr>
             {% endfor %}
         </tbody>

@@ -13,8 +13,6 @@ use SybaseORM\Bundle\Command\MigrationsGenerateCommand;
 use SybaseORM\Bundle\Command\MigrationsMigrateCommand;
 use SybaseORM\Bundle\Command\ProxyGenerateCommand;
 use SybaseORM\Bundle\Command\SchemaValidateCommand;
-use SybaseORM\Bundle\DataCollector\ProfilingConnectionManager;
-use SybaseORM\Bundle\DataCollector\ProfilingEventSubscriber;
 use SybaseORM\Bundle\DataCollector\SybaseQueryCollector;
 use SybaseORM\Cache\CacheManager;
 use SybaseORM\Cache\CacheManagerInterface;
@@ -27,6 +25,9 @@ use SybaseORM\Dialect\SybaseDialect;
 use SybaseORM\Hook\HookDispatcher;
 use SybaseORM\Hydrator\Hydrator;
 use SybaseORM\Hydrator\HydratorInterface;
+use SybaseORM\Instrumentation\InstrumentationCollector;
+use SybaseORM\Instrumentation\NullInstrumentation;
+use SybaseORM\Instrumentation\OrmInstrumentationInterface;
 use SybaseORM\Metadata\MetadataReader;
 use SybaseORM\Metadata\MetadataReaderInterface;
 use SybaseORM\Migration\MigrationManager;
@@ -63,9 +64,6 @@ final class SybaseORMExtension extends Extension
         }
 
         if (empty($connections)) {
-            // No connection configured yet — skip service registration except install command.
-            // This allows cache:clear to succeed after install before the user configures the connection.
-            // Run 'php bin/console sybase:install' to generate the configuration.
             $installDef = new Definition(InstallCommand::class, ['%kernel.project_dir%']);
             $installDef->addTag('console.command');
             $container->setDefinition(InstallCommand::class, $installDef);
@@ -73,19 +71,15 @@ final class SybaseORMExtension extends Extension
             return;
         }
 
-        // Register shared services (dialect, typecaster, metadata, hooks)
+        // Register shared services
         $this->registerDialect($container);
         $this->registerTypeCaster($container);
         $this->registerMetadataReader($container, $config);
         $this->registerProxyGenerator($container, $config);
-
-        // Register profiling services (conditional on WebProfilerBundle availability)
-        $this->registerProfilingServices($container);
-
-        // Register hook dispatcher (after profiling, so it can attach the subscriber)
+        $this->registerInstrumentation($container);
         $this->registerHookDispatcher($container);
 
-        // Register per-connection services (connection manager, identity map, cache, hydrator, uow, em)
+        // Register per-connection services
         $managerServiceIds = [];
         $isFirst = true;
 
@@ -113,53 +107,10 @@ final class SybaseORMExtension extends Extension
         $container->setParameter('sybase_orm.proxy_directory', $config['proxy_directory']);
         $container->setParameter('sybase_orm.migrations_directory', $config['migrations_directory']);
 
-        // Register install command with project dir
-        $installDef = new Definition(InstallCommand::class, ['%kernel.project_dir%']);
-        $installDef->addTag('console.command');
-        $container->setDefinition(InstallCommand::class, $installDef);
+        // Register commands
+        $this->registerCommands($container, $config);
 
-        // Register schema:validate command
-        $schemaValidateDef = new Definition(SchemaValidateCommand::class, [
-            new Reference(MetadataReaderInterface::class),
-            new Reference(ConnectionManagerInterface::class),
-            $config['entity_directories'],
-        ]);
-        $schemaValidateDef->addTag('console.command');
-        $container->setDefinition(SchemaValidateCommand::class, $schemaValidateDef);
-
-        // Register cache:clear command
-        $cacheClearDef = new Definition(CacheClearCommand::class, [
-            new Reference(CacheManagerInterface::class),
-        ]);
-        $cacheClearDef->addTag('console.command');
-        $container->setDefinition(CacheClearCommand::class, $cacheClearDef);
-
-        // Register migrations:generate command
-        $migGenDef = new Definition(MigrationsGenerateCommand::class, [
-            new Reference(MigrationManager::class),
-            new Reference(MetadataReaderInterface::class),
-            $config['entity_directories'],
-        ]);
-        $migGenDef->addTag('console.command');
-        $container->setDefinition(MigrationsGenerateCommand::class, $migGenDef);
-
-        // Register migrations:migrate command
-        $migMigDef = new Definition(MigrationsMigrateCommand::class, [
-            new Reference(MigrationManager::class),
-        ]);
-        $migMigDef->addTag('console.command');
-        $container->setDefinition(MigrationsMigrateCommand::class, $migMigDef);
-
-        // Register proxy:generate command
-        $proxyGenDef = new Definition(ProxyGenerateCommand::class, [
-            new Reference(ProxyGenerator::class),
-            new Reference(MetadataReaderInterface::class),
-            $config['entity_directories'],
-        ]);
-        $proxyGenDef->addTag('console.command');
-        $container->setDefinition(ProxyGenerateCommand::class, $proxyGenDef);
-
-        // Register ProxyCacheWarmer — regenera proxies si shedeza/sybase-orm se actualizó
+        // Register ProxyCacheWarmer
         $cacheWarmerDef = new Definition(ProxyCacheWarmer::class, [
             new Reference(ProxyGenerator::class),
             new Reference(MetadataReaderInterface::class),
@@ -171,7 +122,7 @@ final class SybaseORMExtension extends Extension
         $cacheWarmerDef->setPublic(false);
         $container->setDefinition(ProxyCacheWarmer::class, $cacheWarmerDef);
 
-        // Register SymfonyEventDispatcherSubscriber if EventDispatcher is available
+        // Register SymfonyEventDispatcherSubscriber if available
         if (interface_exists(\Psr\EventDispatcher\EventDispatcherInterface::class)) {
             $eventSubDef = new Definition(\SybaseORM\Hook\SymfonyEventDispatcherSubscriber::class, [
                 new Reference(\Psr\EventDispatcher\EventDispatcherInterface::class, ContainerInterface::IGNORE_ON_INVALID_REFERENCE),
@@ -186,24 +137,28 @@ final class SybaseORMExtension extends Extension
         return 'sybase_orm';
     }
 
+    // ── Factory methods ─────────────────────────────────────────────
+
     /**
-     * Factory method para crear ConnectionManager desde una URL.
-     * Se ejecuta en runtime, cuando las variables de entorno ya están resueltas.
+     * Factory to create ConnectionManager from a URL string.
      */
-    public static function createConnectionManagerFromUrl(string $url, bool $charsetConversion = false, ?LoggerInterface $logger = null): ConnectionManager
-    {
+    public static function createConnectionManagerFromUrl(
+        string $url,
+        bool $charsetConversion = false,
+        ?LoggerInterface $logger = null,
+        ?OrmInstrumentationInterface $instrumentation = null,
+    ): ConnectionManager {
         $config = ConnectionUrlParser::parse($url);
 
         if ($charsetConversion) {
             $config['charset_conversion'] = true;
         }
 
-        return new ConnectionManager($config, $logger);
+        return new ConnectionManager($config, $logger, $instrumentation);
     }
 
     /**
-     * Factory method to create a Redis connection for the second-level cache.
-     * Supports both individual host/port params and a full DSN string.
+     * Factory to create a Redis connection for the second-level cache.
      */
     public static function createRedisConnection(
         string $host = '127.0.0.1',
@@ -216,7 +171,6 @@ final class SybaseORMExtension extends Extension
         $redis = new Redis();
 
         if ($dsn !== null) {
-            // Parse DSN: redis://[:password@]host:port/database
             $parts = parse_url($dsn);
             $host = $parts['host'] ?? $host;
             $port = $parts['port'] ?? $port;
@@ -237,11 +191,12 @@ final class SybaseORMExtension extends Extension
         return $redis;
     }
 
+    // ── Service registration ────────────────────────────────────────
+
     private function registerDialect(ContainerBuilder $container): void
     {
         $definition = new Definition(SybaseDialect::class);
         $definition->setPublic(false);
-
         $container->setDefinition(SybaseDialect::class, $definition);
         $container->setAlias(DialectInterface::class, SybaseDialect::class);
     }
@@ -250,41 +205,21 @@ final class SybaseORMExtension extends Extension
     {
         $definition = new Definition(TypeCaster::class);
         $definition->setPublic(false);
-
         $container->setDefinition(TypeCaster::class, $definition);
         $container->setAlias(TypeCasterInterface::class, TypeCaster::class);
     }
 
     private function registerMetadataReader(ContainerBuilder $container, array $config): void
     {
-        $cacheDir = $config['proxy_directory'];
-
         $definition = new Definition(MetadataReader::class, [
-            $cacheDir,
-            true, // useInstanceCache
+            $config['proxy_directory'],
+            true,
             $config['directory_permissions'] ?? 0o777,
             $config['file_permissions'] ?? 0o666,
         ]);
         $definition->setPublic(false);
-
         $container->setDefinition(MetadataReader::class, $definition);
         $container->setAlias(MetadataReaderInterface::class, MetadataReader::class);
-    }
-
-    private function registerHookDispatcher(ContainerBuilder $container): void
-    {
-        $definition = new Definition(HookDispatcher::class, [
-            new Reference(MetadataReaderInterface::class),
-        ]);
-
-        // Register ProfilingEventSubscriber only when profiler is available
-        if ($container->hasDefinition(ProfilingEventSubscriber::class)) {
-            $definition->addMethodCall('addSubscriber', [new Reference(ProfilingEventSubscriber::class)]);
-        }
-
-        $definition->setPublic(false);
-
-        $container->setDefinition(HookDispatcher::class, $definition);
     }
 
     private function registerProxyGenerator(ContainerBuilder $container, array $config): void
@@ -295,8 +230,56 @@ final class SybaseORMExtension extends Extension
             $config['file_permissions'] ?? 0o666,
         ]);
         $definition->setPublic(false);
-
         $container->setDefinition(ProxyGenerator::class, $definition);
+    }
+
+    /**
+     * Registers the ORM instrumentation layer.
+     *
+     * In debug mode (WebProfilerBundle available): uses InstrumentationCollector
+     * that feeds the SybaseQueryCollector for the profiler panel.
+     *
+     * In production: uses NullInstrumentation (zero overhead).
+     */
+    private function registerInstrumentation(ContainerBuilder $container): void
+    {
+        $profilerAvailable = class_exists('Symfony\\Bundle\\WebProfilerBundle\\WebProfilerBundle');
+
+        if ($profilerAvailable) {
+            // Register InstrumentationCollector — the ORM feeds data into this
+            $instrDef = new Definition(InstrumentationCollector::class);
+            $instrDef->setPublic(false);
+            $container->setDefinition(InstrumentationCollector::class, $instrDef);
+
+            // Register DataCollector — reads from InstrumentationCollector for the profiler
+            $collectorDef = new Definition(SybaseQueryCollector::class, [
+                new Reference(InstrumentationCollector::class),
+            ]);
+            $collectorDef->addTag('data_collector', [
+                'template' => '@SybaseORM/Collector/sybase_orm.html.twig',
+                'id' => 'sybase_orm',
+            ]);
+            $collectorDef->setPublic(false);
+            $container->setDefinition(SybaseQueryCollector::class, $collectorDef);
+
+            // Alias the interface to the collector (for ConnectionManager injection)
+            $container->setAlias(OrmInstrumentationInterface::class, InstrumentationCollector::class);
+        } else {
+            // Production: null instrumentation (zero overhead)
+            $nullDef = new Definition(NullInstrumentation::class);
+            $nullDef->setPublic(false);
+            $container->setDefinition(NullInstrumentation::class, $nullDef);
+            $container->setAlias(OrmInstrumentationInterface::class, NullInstrumentation::class);
+        }
+    }
+
+    private function registerHookDispatcher(ContainerBuilder $container): void
+    {
+        $definition = new Definition(HookDispatcher::class, [
+            new Reference(MetadataReaderInterface::class),
+        ]);
+        $definition->setPublic(false);
+        $container->setDefinition(HookDispatcher::class, $definition);
     }
 
     private function registerMigrationManager(ContainerBuilder $container, array $config): void
@@ -308,43 +291,59 @@ final class SybaseORMExtension extends Extension
             $config['migrations_directory'],
         ]);
         $definition->setPublic(false);
-
         $container->setDefinition(MigrationManager::class, $definition);
     }
 
-    /**
-     * Registers the DataCollector and profiling decorator services.
-     * Only active when the Symfony profiler is available (debug mode + web-profiler-bundle).
-     */
-    private function registerProfilingServices(ContainerBuilder $container): void
+    private function registerCommands(ContainerBuilder $container, array $config): void
     {
-        // Only register when the WebProfilerBundle is available
-        if (!class_exists('Symfony\\Bundle\\WebProfilerBundle\\WebProfilerBundle')) {
-            return;
-        }
+        $installDef = new Definition(InstallCommand::class, ['%kernel.project_dir%']);
+        $installDef->addTag('console.command');
+        $container->setDefinition(InstallCommand::class, $installDef);
 
-        $collectorDef = new Definition(SybaseQueryCollector::class);
-        $collectorDef->addTag('data_collector', [
-            'template' => '@SybaseORM/Collector/sybase_orm.html.twig',
-            'id' => 'sybase_orm',
+        $schemaValidateDef = new Definition(SchemaValidateCommand::class, [
+            new Reference(MetadataReaderInterface::class),
+            new Reference(ConnectionManagerInterface::class),
+            $config['entity_directories'],
         ]);
-        $collectorDef->setPublic(false);
-        $container->setDefinition(SybaseQueryCollector::class, $collectorDef);
+        $schemaValidateDef->addTag('console.command');
+        $container->setDefinition(SchemaValidateCommand::class, $schemaValidateDef);
 
-        // ProfilingEventSubscriber — records UoW operations in the collector
-        $profilingSubDef = new Definition(ProfilingEventSubscriber::class, [
-            new Reference(SybaseQueryCollector::class),
+        $cacheClearDef = new Definition(CacheClearCommand::class, [
+            new Reference(CacheManagerInterface::class),
         ]);
-        $profilingSubDef->setPublic(false);
-        $container->setDefinition(ProfilingEventSubscriber::class, $profilingSubDef);
+        $cacheClearDef->addTag('console.command');
+        $container->setDefinition(CacheClearCommand::class, $cacheClearDef);
+
+        $migGenDef = new Definition(MigrationsGenerateCommand::class, [
+            new Reference(MigrationManager::class),
+            new Reference(MetadataReaderInterface::class),
+            $config['entity_directories'],
+        ]);
+        $migGenDef->addTag('console.command');
+        $container->setDefinition(MigrationsGenerateCommand::class, $migGenDef);
+
+        $migMigDef = new Definition(MigrationsMigrateCommand::class, [
+            new Reference(MigrationManager::class),
+        ]);
+        $migMigDef->addTag('console.command');
+        $container->setDefinition(MigrationsMigrateCommand::class, $migMigDef);
+
+        $proxyGenDef = new Definition(ProxyGenerateCommand::class, [
+            new Reference(ProxyGenerator::class),
+            new Reference(MetadataReaderInterface::class),
+            $config['entity_directories'],
+        ]);
+        $proxyGenDef->addTag('console.command');
+        $container->setDefinition(ProxyGenerateCommand::class, $proxyGenDef);
     }
 
     private function registerConnectionServices(ContainerBuilder $container, array $globalConfig, string $name, array $connectionConfig, bool $isFirst): void
     {
         $suffix = '.' . $name;
         $loggerRef = new Reference(LoggerInterface::class, ContainerInterface::IGNORE_ON_INVALID_REFERENCE);
+        $instrumentationRef = new Reference(OrmInstrumentationInterface::class);
 
-        // 1. ConnectionManager
+        // 1. ConnectionManager — now natively instrumented (no decorator needed)
         if (isset($connectionConfig['url']) && $connectionConfig['url'] !== null) {
             $connDef = new Definition(ConnectionManager::class);
             $connDef->setFactory([self::class, 'createConnectionManagerFromUrl']);
@@ -352,6 +351,7 @@ final class SybaseORMExtension extends Extension
                 $connectionConfig['url'],
                 $connectionConfig['charset_conversion'] ?? false,
                 $loggerRef,
+                $instrumentationRef,
             ]);
         } else {
             $connConfig = [
@@ -365,38 +365,22 @@ final class SybaseORMExtension extends Extension
                 'charset_conversion' => $connectionConfig['charset_conversion'] ?? false,
                 'read_only' => $connectionConfig['read_only'] ?? false,
             ];
-            $connDef = new Definition(ConnectionManager::class, [$connConfig, $loggerRef]);
+            $connDef = new Definition(ConnectionManager::class, [$connConfig, $loggerRef, $instrumentationRef]);
         }
         $connDef->setPublic(false);
         $container->setDefinition('sybase_orm.connection_manager' . $suffix, $connDef);
-
-        // 1b. Profiling decorator — wraps ConnectionManager only when profiler is available
-        if ($container->hasDefinition(SybaseQueryCollector::class)) {
-            $profilingConnDef = new Definition(ProfilingConnectionManager::class, [
-                new Reference('sybase_orm.connection_manager' . $suffix),
-                new Reference(SybaseQueryCollector::class),
-                $name,
-                '%kernel.debug%',
-            ]);
-            $profilingConnDef->setPublic(false);
-            $container->setDefinition('sybase_orm.connection_manager.profiling' . $suffix, $profilingConnDef);
-            $connServiceId = 'sybase_orm.connection_manager.profiling' . $suffix;
-        } else {
-            $connServiceId = 'sybase_orm.connection_manager' . $suffix;
-        }
 
         // 2. IdentityMap (per-connection)
         $imDef = new Definition(IdentityMap::class);
         $imDef->setPublic(false);
         $container->setDefinition('sybase_orm.identity_map' . $suffix, $imDef);
 
-        // 3. CacheManager (per-connection) with optional Redis second-level cache
+        // 3. CacheManager with optional Redis second-level cache
         $cacheConfig = $globalConfig['cache'] ?? [];
         $redisConfig = $globalConfig['redis'] ?? [];
         $secondLevelRef = null;
 
         if (($cacheConfig['enabled'] ?? false) && ($cacheConfig['adapter'] ?? null) === 'redis') {
-            // Register RedisCacheAdapter
             $redisDef = new Definition(Redis::class);
             $redisDef->setPublic(false);
             $redisDef->setFactory([self::class, 'createRedisConnection']);
@@ -416,7 +400,6 @@ final class SybaseORMExtension extends Extension
             ]);
             $adapterDef->setPublic(false);
             $container->setDefinition('sybase_orm.cache_adapter' . $suffix, $adapterDef);
-
             $secondLevelRef = new Reference('sybase_orm.cache_adapter' . $suffix);
         }
 
@@ -436,18 +419,15 @@ final class SybaseORMExtension extends Extension
             new Reference(TypeCasterInterface::class),
             new Reference('sybase_orm.identity_map' . $suffix),
             new Reference('sybase_orm.unit_of_work' . $suffix),
-            new Reference(ProxyGenerator::class), // Inyectar ProxyGenerator
+            new Reference(ProxyGenerator::class),
         ]);
-
-        // Agregar un Setter Injection o inyectar el EntityManagerRegistry
         $hydDef->addMethodCall('setEntityManager', [new Reference('sybase_orm.entity_manager' . $suffix)]);
-
         $hydDef->setPublic(false);
         $container->setDefinition('sybase_orm.hydrator' . $suffix, $hydDef);
 
-        // 5. UnitOfWork (per-connection) — uses profiling connection manager when available
+        // 5. UnitOfWork
         $uowDef = new Definition(UnitOfWork::class, [
-            new Reference($connServiceId),
+            new Reference('sybase_orm.connection_manager' . $suffix),
             new Reference(MetadataReaderInterface::class),
             new Reference(DialectInterface::class),
             new Reference(TypeCasterInterface::class),
@@ -457,9 +437,9 @@ final class SybaseORMExtension extends Extension
         $uowDef->setPublic(false);
         $container->setDefinition('sybase_orm.unit_of_work' . $suffix, $uowDef);
 
-        // 6. EntityManager (per-connection) — uses profiling connection manager when available
+        // 6. EntityManager
         $emDef = new Definition(EntityManager::class, [
-            new Reference($connServiceId),
+            new Reference('sybase_orm.connection_manager' . $suffix),
             new Reference(MetadataReaderInterface::class),
             new Reference(DialectInterface::class),
             new Reference(TypeCasterInterface::class),
@@ -474,7 +454,7 @@ final class SybaseORMExtension extends Extension
         $emDef->addMethodCall('setEntityDirectories', [$globalConfig['entity_directories']]);
         $container->setDefinition('sybase_orm.entity_manager' . $suffix, $emDef);
 
-        // 7. If this is the first (default) connection, register as the primary services
+        // 7. Aliases for the default connection
         if ($isFirst) {
             $container->setAlias(ConnectionManagerInterface::class, 'sybase_orm.connection_manager' . $suffix);
             $container->setAlias(ConnectionManager::class, 'sybase_orm.connection_manager' . $suffix);

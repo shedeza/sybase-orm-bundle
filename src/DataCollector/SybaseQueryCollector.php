@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace SybaseORM\Bundle\DataCollector;
 
+use SybaseORM\Instrumentation\InstrumentationCollector;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\DataCollector\DataCollector;
@@ -13,132 +14,69 @@ use Throwable;
 /**
  * Symfony Web Profiler DataCollector for SybaseORM.
  *
- * Collects executed queries, timing, connection info, hydration stats,
- * identity map usage, and UnitOfWork operations for display in the
- * Symfony debug toolbar and profiler panel.
+ * Reads instrumentation data from the ORM's native InstrumentationCollector
+ * and presents it in the Symfony debug toolbar and profiler panel.
  */
 final class SybaseQueryCollector extends DataCollector implements LateDataCollectorInterface
 {
-    /** @var array<int, array{sql: string, params: array<mixed>, time: float, connection: string, backtrace: string|null}> */
-    private array $queries = [];
+    private InstrumentationCollector $instrumentation;
 
-    private float $totalTime = 0.0;
-
-    private int $hydratedEntities = 0;
-
-    private int $identityMapHits = 0;
-
-    private int $identityMapSize = 0;
-
-    /** @var array{persisted: int, updated: int, removed: int} */
-    private array $unitOfWorkOps = ['persisted' => 0, 'updated' => 0, 'removed' => 0];
-
-    /** @var array<string, array{queries: int, time: float}> */
-    private array $connectionStats = [];
+    public function __construct(InstrumentationCollector $instrumentation)
+    {
+        $this->instrumentation = $instrumentation;
+    }
 
     public function getName(): string
     {
         return 'sybase_orm';
     }
 
-    /**
-     * Records a query execution.
-     *
-     * @param array<mixed> $params
-     */
-    public function addQuery(string $sql, array $params, float $timeMs, string $connection = 'default', ?string $backtrace = null): void
-    {
-        $this->queries[] = [
-            'sql' => $sql,
-            'params' => $params,
-            'time' => $timeMs,
-            'connection' => $connection,
-            'backtrace' => $backtrace,
-        ];
-        $this->totalTime += $timeMs;
-
-        if (!isset($this->connectionStats[$connection])) {
-            $this->connectionStats[$connection] = ['queries' => 0, 'time' => 0.0];
-        }
-        $this->connectionStats[$connection]['queries']++;
-        $this->connectionStats[$connection]['time'] += $timeMs;
-    }
-
-    /**
-     * Records entity hydration.
-     */
-    public function addHydratedEntity(): void
-    {
-        $this->hydratedEntities++;
-    }
-
-    /**
-     * Records an identity map cache hit.
-     */
-    public function addIdentityMapHit(): void
-    {
-        $this->identityMapHits++;
-    }
-
-    /**
-     * Sets the current identity map size.
-     */
-    public function setIdentityMapSize(int $size): void
-    {
-        $this->identityMapSize = $size;
-    }
-
-    /**
-     * Records a UnitOfWork operation.
-     */
-    public function addUnitOfWorkOperation(string $type): void
-    {
-        if (isset($this->unitOfWorkOps[$type])) {
-            $this->unitOfWorkOps[$type]++;
-        }
-    }
-
     public function collect(Request $request, Response $response, ?Throwable $exception = null): void
     {
-        // Datos base se recopilan durante el request via addQuery(), etc.
+        // Data is collected by the InstrumentationCollector during the request
     }
 
     public function lateCollect(): void
     {
-        // Clone query params for the VarDumper (profiler_dump() requires Data objects)
-        $queries = array_map(function (array $query): array {
+        $stats = $this->instrumentation->getStats();
+        $queries = $this->instrumentation->getQueries();
+
+        // Clone params for VarDumper (profiler_dump() requires Data objects)
+        $clonedQueries = array_map(function (array $query): array {
             $query['params'] = $this->cloneVar($query['params']);
 
             return $query;
-        }, $this->queries);
+        }, $queries);
 
         $this->data = [
-            'queries' => $queries,
-            'query_count' => \count($this->queries),
-            'total_time' => $this->totalTime,
-            'hydrated_entities' => $this->hydratedEntities,
-            'identity_map_hits' => $this->identityMapHits,
-            'identity_map_size' => $this->identityMapSize,
-            'unit_of_work' => $this->unitOfWorkOps,
-            'connection_stats' => $this->connectionStats,
-            'duplicate_queries' => $this->detectDuplicateQueries(),
-            'slow_queries' => $this->detectSlowQueries(),
+            'queries' => $clonedQueries,
+            'query_count' => $stats['query_count'],
+            'total_time' => $stats['total_query_time_ms'],
+            'total_flush_time' => $stats['total_flush_time_ms'],
+            'hydrations' => $stats['hydrations'],
+            'collections' => $stats['collections'],
+            'identity_hits' => $stats['identity_hits'],
+            'identity_misses' => $stats['identity_misses'],
+            'cache_hits' => $stats['cache_hits'],
+            'cache_misses' => $stats['cache_misses'],
+            'cache_writes' => $stats['cache_writes'],
+            'lazy_loads' => $stats['lazy_loads'],
+            'flushes' => $stats['flushes'],
+            'transactions' => $stats['transactions'],
+            'rollbacks' => $stats['rollbacks'],
+            'connection_stats' => $this->buildConnectionStats($queries),
+            'duplicate_queries' => $this->detectDuplicateQueries($queries),
+            'slow_queries' => $this->instrumentation->getSlowQueries(100.0),
         ];
     }
 
     public function reset(): void
     {
         $this->data = [];
-        $this->queries = [];
-        $this->totalTime = 0.0;
-        $this->hydratedEntities = 0;
-        $this->identityMapHits = 0;
-        $this->identityMapSize = 0;
-        $this->unitOfWorkOps = ['persisted' => 0, 'updated' => 0, 'removed' => 0];
-        $this->connectionStats = [];
+        $this->instrumentation->reset();
     }
 
-    // --- Accessors for the Twig template ---
+    // ── Accessors for Twig template ─────────────────────────────────
 
     public function getQueryCount(): int
     {
@@ -150,56 +88,81 @@ final class SybaseQueryCollector extends DataCollector implements LateDataCollec
         return $this->data['total_time'] ?? 0.0;
     }
 
-    /**
-     * @return array<int, array{sql: string, params: array<mixed>, time: float, connection: string, backtrace: string|null}>
-     */
+    public function getTotalFlushTime(): float
+    {
+        return $this->data['total_flush_time'] ?? 0.0;
+    }
+
     public function getQueries(): array
     {
         return $this->data['queries'] ?? [];
     }
 
-    public function getHydratedEntities(): int
+    public function getHydrations(): int
     {
-        return $this->data['hydrated_entities'] ?? 0;
+        return $this->data['hydrations'] ?? 0;
     }
 
-    public function getIdentityMapHits(): int
+    public function getCollections(): int
     {
-        return $this->data['identity_map_hits'] ?? 0;
+        return $this->data['collections'] ?? 0;
     }
 
-    public function getIdentityMapSize(): int
+    public function getIdentityHits(): int
     {
-        return $this->data['identity_map_size'] ?? 0;
+        return $this->data['identity_hits'] ?? 0;
     }
 
-    /**
-     * @return array{persisted: int, updated: int, removed: int}
-     */
-    public function getUnitOfWork(): array
+    public function getIdentityMisses(): int
     {
-        return $this->data['unit_of_work'] ?? ['persisted' => 0, 'updated' => 0, 'removed' => 0];
+        return $this->data['identity_misses'] ?? 0;
     }
 
-    /**
-     * @return array<string, array{queries: int, time: float}>
-     */
+    public function getCacheHits(): int
+    {
+        return $this->data['cache_hits'] ?? 0;
+    }
+
+    public function getCacheMisses(): int
+    {
+        return $this->data['cache_misses'] ?? 0;
+    }
+
+    public function getCacheWrites(): int
+    {
+        return $this->data['cache_writes'] ?? 0;
+    }
+
+    public function getLazyLoads(): int
+    {
+        return $this->data['lazy_loads'] ?? 0;
+    }
+
+    public function getFlushes(): int
+    {
+        return $this->data['flushes'] ?? 0;
+    }
+
+    public function getTransactions(): int
+    {
+        return $this->data['transactions'] ?? 0;
+    }
+
+    public function getRollbacks(): int
+    {
+        return $this->data['rollbacks'] ?? 0;
+    }
+
     public function getConnectionStats(): array
     {
         return $this->data['connection_stats'] ?? [];
     }
 
-    /**
-     * @return array<string, int>
-     */
     public function getDuplicateQueries(): array
     {
         return $this->data['duplicate_queries'] ?? [];
     }
 
-    /**
-     * @return array<int, array{sql: string, params: array<mixed>, time: float, connection: string, backtrace: string|null}>
-     */
     public function getSlowQueries(): array
     {
         return $this->data['slow_queries'] ?? [];
@@ -207,37 +170,37 @@ final class SybaseQueryCollector extends DataCollector implements LateDataCollec
 
     public function hasWarnings(): bool
     {
-        return !empty($this->data['duplicate_queries']) || !empty($this->data['slow_queries']);
+        return !empty($this->data['duplicate_queries'])
+            || !empty($this->data['slow_queries'])
+            || ($this->data['lazy_loads'] ?? 0) > 5
+            || ($this->data['rollbacks'] ?? 0) > 0;
     }
 
-    // --- Internal analysis ---
+    // ── Internal analysis ───────────────────────────────────────────
 
-    /**
-     * Detecta queries duplicadas (misma SQL ejecutada múltiples veces).
-     *
-     * @return array<string, int>
-     */
-    private function detectDuplicateQueries(): array
+    private function buildConnectionStats(array $queries): array
+    {
+        $stats = [];
+        foreach ($queries as $query) {
+            $conn = $query['connection'];
+            if (!isset($stats[$conn])) {
+                $stats[$conn] = ['queries' => 0, 'time' => 0.0];
+            }
+            $stats[$conn]['queries']++;
+            $stats[$conn]['time'] += $query['time_ms'] ?? 0.0;
+        }
+
+        return $stats;
+    }
+
+    private function detectDuplicateQueries(array $queries): array
     {
         $counts = [];
-        foreach ($this->queries as $query) {
+        foreach ($queries as $query) {
             $key = $query['sql'];
             $counts[$key] = ($counts[$key] ?? 0) + 1;
         }
 
         return array_filter($counts, static fn(int $count): bool => $count > 1);
-    }
-
-    /**
-     * Detecta queries lentas (>100ms).
-     *
-     * @return array<int, array{sql: string, params: array<mixed>, time: float, connection: string, backtrace: string|null}>
-     */
-    private function detectSlowQueries(): array
-    {
-        return array_filter(
-            $this->queries,
-            static fn(array $query): bool => $query['time'] > 100.0,
-        );
     }
 }
