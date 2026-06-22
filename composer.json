@@ -2,11 +2,11 @@
     "name": "shedeza/sybase-orm-bundle",
     "description": "Symfony Bundle integration for shedeza/sybase-orm",
     "type": "symfony-bundle",
-    "version": "2.1.3",
+    "version": "2.1.4",
     "license": "MIT",
     "require": {
         "php": "^8.1",
-        "shedeza/sybase-orm": "^3.6",
+        "shedeza/sybase-orm": "^3.6|^4.0",
         "symfony/config": "^6.0|^7.0",
         "symfony/dependency-injection": "^6.0|^7.0",
         "symfony/framework-bundle": "^6.0|^7.0",
