@@ -62,9 +62,19 @@ final class RepositoryAutowiringCompilerPass implements CompilerPassInterface
                 continue;
             }
 
-            // Don't override if already registered (user may have custom definition)
+            // Don't override if already registered with a functional definition
+            // (user may have a custom factory or concrete service).
+            // Skip abstract/excluded definitions from Symfony's resource auto-discovery,
+            // as those are not real service definitions.
             if ($container->has($metadata->repositoryClass)) {
-                continue;
+                try {
+                    $existingDef = $container->findDefinition($metadata->repositoryClass);
+                    if ($existingDef->getFactory() !== null || !$existingDef->isAbstract()) {
+                        continue;
+                    }
+                } catch (Throwable) {
+                    // Definition lookup failed — safe to override
+                }
             }
 
             $repoDef = new Definition($metadata->repositoryClass);
