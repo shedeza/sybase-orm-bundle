@@ -18,7 +18,7 @@ class ProxyGenerateCommandTest extends TestCase
     protected function setUp(): void
     {
         $this->tempDir = sys_get_temp_dir() . '/sybase_orm_proxy_test_' . uniqid();
-        mkdir($this->tempDir, 0777, true);
+        mkdir($this->tempDir, 0o777, true);
     }
 
     protected function tearDown(): void
@@ -36,7 +36,7 @@ class ProxyGenerateCommandTest extends TestCase
         $command = new ProxyGenerateCommand(
             $proxyGenerator,
             $metadataReader,
-            [$this->tempDir]
+            [$this->tempDir],
         );
 
         $application = new Application();

@@ -33,7 +33,8 @@
         "friendsofphp/php-cs-fixer": "^3.50",
         "symfony/phpunit-bridge": "^6.0|^7.0",
         "symfony/web-profiler-bundle": "^6.0|^7.0",
-        "twig/twig": "^3.0"
+        "twig/twig": "^3.0",
+        "ext-redis": "*"
     },
     "suggest": {
         "symfony/web-profiler-bundle": "For Sybase ORM debug toolbar and profiler panel",

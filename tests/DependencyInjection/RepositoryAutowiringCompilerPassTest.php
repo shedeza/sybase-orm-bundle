@@ -17,7 +17,7 @@ class RepositoryAutowiringCompilerPassTest extends TestCase
     protected function setUp(): void
     {
         $this->tempDir = sys_get_temp_dir() . '/sybase_orm_repo_test_' . uniqid();
-        mkdir($this->tempDir, 0777, true);
+        mkdir($this->tempDir, 0o777, true);
     }
 
     protected function tearDown(): void
@@ -35,9 +35,9 @@ class RepositoryAutowiringCompilerPassTest extends TestCase
     {
         $container = new ContainerBuilder();
         $compilerPass = new RepositoryAutowiringCompilerPass();
-        
+
         $compilerPass->process($container);
-        
+
         $this->assertFalse($container->has('some_repo'));
     }
 
@@ -46,10 +46,10 @@ class RepositoryAutowiringCompilerPassTest extends TestCase
         $container = new ContainerBuilder();
         $container->setDefinition(EntityManagerRegistry::class, new Definition());
         $container->setParameter('sybase_orm.entity_directories', [$this->tempDir]);
-        
+
         $compilerPass = new RepositoryAutowiringCompilerPass();
         $compilerPass->process($container);
-        
+
         $this->assertTrue($container->has(EntityManagerRegistry::class));
     }
 }

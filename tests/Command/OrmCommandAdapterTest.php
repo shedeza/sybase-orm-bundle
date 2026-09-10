@@ -17,7 +17,7 @@ class OrmCommandAdapterTest extends TestCase
         $ormCommand = $this->createMock(CommandInterface::class);
         $ormCommand->method('getName')->willReturn('fake:command');
         $ormCommand->method('getDescription')->willReturn('Fake description');
-        
+
         $ormCommand->expects($this->once())
             ->method('execute')
             ->with(['--force', 'some_arg'])
@@ -33,13 +33,13 @@ class OrmCommandAdapterTest extends TestCase
 
         $command = $application->find('sybase:fake:command');
         $commandTester = new CommandTester($command);
-        
+
         $commandTester->execute([
             'args' => ['--force', 'some_arg'],
         ]);
 
         $commandTester->assertCommandIsSuccessful();
-        
+
         $output = $commandTester->getDisplay();
         $this->assertStringContainsString('Some output from ORM command', $output);
     }

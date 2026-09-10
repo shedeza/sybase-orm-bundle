@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace SybaseORM\Bundle\DependencyInjection;
 
+use LogicException;
 use Psr\Log\LoggerInterface;
 use Redis;
 use SybaseORM\Bundle\CacheWarmer\ProxyCacheWarmer;
@@ -164,6 +165,10 @@ final class SybaseORMExtension extends Extension
         float $timeout = 2.0,
         ?string $dsn = null,
     ): Redis {
+        if (!class_exists(Redis::class)) {
+            throw new LogicException('The Redis PHP extension is required to use the Redis cache. Please install it.');
+        }
+
         $redis = new Redis();
 
         if ($dsn !== null) {

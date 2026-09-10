@@ -16,7 +16,7 @@ class InstallCommandTest extends TestCase
     protected function setUp(): void
     {
         $this->projectDir = sys_get_temp_dir() . '/sybase_orm_test_' . uniqid();
-        mkdir($this->projectDir, 0777, true);
+        mkdir($this->projectDir, 0o777, true);
     }
 
     protected function tearDown(): void
@@ -34,7 +34,7 @@ class InstallCommandTest extends TestCase
         $commandTester = new CommandTester($command);
 
         $commandTester->execute([]);
-        
+
         $commandTester->assertCommandIsSuccessful();
 
         $this->assertFileExists($this->projectDir . '/config/packages/sybase_orm.yaml');
