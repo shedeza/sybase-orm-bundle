@@ -317,6 +317,16 @@ final class SybaseORMExtension extends Extension
         $container->setDefinition('sybase_orm.cmd.make_entity.inner', $makeEntityDef);
         $this->registerOrmCommandAdapter($container, 'sybase_orm.cmd.make_entity', 'sybase:make:entity', 'sybase_orm.cmd.make_entity.inner');
 
+        // make:migration
+        $makeMigrationDef = new Definition(\SybaseORM\Console\Command\MakeMigrationCommand::class, [
+            new Reference(MigrationManager::class),
+            $config['migrations_directory'],
+            [], // entity classes will be resolved at runtime or via other ways
+        ]);
+        $makeMigrationDef->setPublic(false);
+        $container->setDefinition('sybase_orm.cmd.make_migration.inner', $makeMigrationDef);
+        $this->registerOrmCommandAdapter($container, 'sybase_orm.cmd.make_migration', 'sybase:make:migration', 'sybase_orm.cmd.make_migration.inner');
+
         // orm:info
         $ormInfoDef = new Definition(\SybaseORM\Console\Command\OrmInfoCommand::class, [
             new Reference(MetadataReaderInterface::class),
