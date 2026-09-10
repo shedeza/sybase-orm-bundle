@@ -408,6 +408,22 @@ final class SybaseORMExtension extends Extension
         $schemaValidateDef->setPublic(false);
         $container->setDefinition('sybase_orm.cmd.schema_validate.inner', $schemaValidateDef);
         $this->registerOrmCommandAdapter($container, 'sybase_orm.cmd.schema_validate', 'sybase:schema:validate', 'sybase_orm.cmd.schema_validate.inner');
+
+        // scaffold
+        $scaffoldDef = new Definition(\SybaseORM\Console\Command\ScaffoldCommand::class, [
+            new Reference(ConnectionManagerInterface::class),
+        ]);
+        $scaffoldDef->setPublic(false);
+        $container->setDefinition('sybase_orm.cmd.scaffold.inner', $scaffoldDef);
+        $this->registerOrmCommandAdapter($container, 'sybase_orm.cmd.scaffold', 'sybase:scaffold', 'sybase_orm.cmd.scaffold.inner');
+
+        // db:seed
+        $seedDef = new Definition(\SybaseORM\Console\Command\SeedCommand::class, [
+            new Reference(EntityManagerInterface::class),
+        ]);
+        $seedDef->setPublic(false);
+        $container->setDefinition('sybase_orm.cmd.seed.inner', $seedDef);
+        $this->registerOrmCommandAdapter($container, 'sybase_orm.cmd.seed', 'sybase:db:seed', 'sybase_orm.cmd.seed.inner');
     }
 
     /**
