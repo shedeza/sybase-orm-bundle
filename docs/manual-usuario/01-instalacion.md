@@ -12,7 +12,7 @@ Antes de instalar el bundle, asegúrate de cumplir con los siguientes requisitos
 |-----------|---------------|-------|
 | PHP | 8.1 | Con extensiones `pdo` y `pdo_dblib` |
 | Symfony | 6.0 o 7.0 | Framework Bundle requerido |
-| shedeza/sybase-orm | ^3.6 | Se instala automáticamente como dependencia |
+| shedeza/sybase-orm | ^3.6 o ^4.0 | Se instala automáticamente como dependencia |
 | Sybase ASE | 15.x+ | Servidor de base de datos |
 | FreeTDS | 0.91+ | Driver de conexión a Sybase |
 

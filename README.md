@@ -25,7 +25,7 @@ Symfony bundle providing full framework integration for the [shedeza/sybase-orm]
 |-------------|---------|
 | PHP | >= 8.1 |
 | Symfony | 6.x or 7.x |
-| shedeza/sybase-orm | ^3.6 |
+| shedeza/sybase-orm | ^3.6 or ^4.0 |
 | PHP Extension | pdo_dblib |
 | Database | Sybase ASE |
 

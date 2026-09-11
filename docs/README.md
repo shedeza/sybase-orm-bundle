@@ -1,4 +1,4 @@
-# Documentación - sybase-orm-bundle v2.1.0
+# Documentación - sybase-orm-bundle v2.4.0
 
 Bienvenido a la documentación completa del bundle `shedeza/sybase-orm-bundle`. Aquí encontrarás toda la información necesaria para instalar, usar, entender y operar este bundle en tus proyectos Symfony.
 
@@ -9,7 +9,7 @@ Bienvenido a la documentación completa del bundle `shedeza/sybase-orm-bundle`. 
 - **13 comandos CLI**: incluyendo `sybase:make:entity`, `sybase:orm:info`, y un set completo de migraciones (status, rollback, reset, fresh, preview).
 - **Caché Redis con circuit breaker**: tolerancia a fallos con `failure_threshold` y `cooldown_seconds`.
 - **Permisos de archivos configurables**: `file_permissions` y `directory_permissions` para archivos generados.
-- **Requiere shedeza/sybase-orm ^3.6**.
+- **Compatible con shedeza/sybase-orm ^3.6 y ^4.0** (soporte para ciclo de vida TPH y validación de entidades).
 
 ## Manuales Disponibles
 
