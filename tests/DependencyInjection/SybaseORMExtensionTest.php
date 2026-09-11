@@ -221,6 +221,14 @@ final class SybaseORMExtensionTest extends TestCase
         $this->assertTrue($this->container->has(OrmInstrumentationInterface::class));
     }
 
+    public function testInheritanceHandlerAndEntityValidatorAreRegistered(): void
+    {
+        $this->loadWithDefaultConnection();
+
+        $this->assertTrue($this->container->hasDefinition(\SybaseORM\ORM\InheritanceHandler::class));
+        $this->assertTrue($this->container->hasDefinition(\SybaseORM\ORM\EntityValidator::class));
+    }
+
     private function loadWithDefaultConnection(): void
     {
         $this->extension->load([

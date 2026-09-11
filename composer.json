@@ -33,10 +33,10 @@
         "friendsofphp/php-cs-fixer": "^3.50",
         "symfony/phpunit-bridge": "^6.0|^7.0",
         "symfony/web-profiler-bundle": "^6.0|^7.0",
-        "twig/twig": "^3.0",
-        "ext-redis": "*"
+        "twig/twig": "^3.0"
     },
     "suggest": {
+        "ext-redis": "Required to use Redis second-level cache",
         "symfony/web-profiler-bundle": "For Sybase ORM debug toolbar and profiler panel",
         "symfony/twig-bundle": "Required by the web profiler panel for template rendering",
         "symfony/var-dumper": "For parameter dumping in the profiler query panel",

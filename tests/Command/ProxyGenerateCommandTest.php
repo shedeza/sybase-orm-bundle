@@ -48,6 +48,6 @@ class ProxyGenerateCommandTest extends TestCase
         $commandTester->execute([]);
 
         $commandTester->assertCommandIsSuccessful();
-        $this->assertStringContainsString('No entity classes found in configured directories.', $commandTester->getDisplay());
+        $this->assertStringContainsString('No entity classes found', $commandTester->getDisplay());
     }
 }

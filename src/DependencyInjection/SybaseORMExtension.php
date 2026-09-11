@@ -31,8 +31,10 @@ use SybaseORM\Migration\MigrationManager;
 use SybaseORM\ORM\EntityManager;
 use SybaseORM\ORM\EntityManagerInterface;
 use SybaseORM\ORM\EntityManagerRegistry;
+use SybaseORM\ORM\EntityValidator;
 use SybaseORM\ORM\IdentityMap;
 use SybaseORM\ORM\IdentityMapInterface;
+use SybaseORM\ORM\InheritanceHandler;
 use SybaseORM\ORM\UnitOfWork;
 use SybaseORM\ORM\UnitOfWorkInterface;
 use SybaseORM\Proxy\ProxyGenerator;
@@ -75,6 +77,8 @@ final class SybaseORMExtension extends Extension
         $this->registerProxyGenerator($container, $config);
         $this->registerInstrumentation($container);
         $this->registerHookDispatcher($container);
+        $this->registerInheritanceHandler($container);
+        $this->registerEntityValidator($container);
 
         // Register per-connection services
         $managerServiceIds = [];
@@ -281,6 +285,28 @@ final class SybaseORMExtension extends Extension
         ]);
         $definition->setPublic(false);
         $container->setDefinition(HookDispatcher::class, $definition);
+    }
+
+    private function registerInheritanceHandler(ContainerBuilder $container): void
+    {
+        if (class_exists(InheritanceHandler::class)) {
+            $definition = new Definition(InheritanceHandler::class, [
+                new Reference(MetadataReaderInterface::class),
+            ]);
+            $definition->setPublic(false);
+            $container->setDefinition(InheritanceHandler::class, $definition);
+        }
+    }
+
+    private function registerEntityValidator(ContainerBuilder $container): void
+    {
+        if (class_exists(EntityValidator::class)) {
+            $definition = new Definition(EntityValidator::class, [
+                new Reference(MetadataReaderInterface::class),
+            ]);
+            $definition->setPublic(false);
+            $container->setDefinition(EntityValidator::class, $definition);
+        }
     }
 
     private function registerMigrationManager(ContainerBuilder $container, array $config): void
@@ -521,26 +547,39 @@ final class SybaseORMExtension extends Extension
         $container->setDefinition('sybase_orm.cache_manager' . $suffix, $cacheDef);
 
         // 4. Hydrator (per-connection)
-        $hydDef = new Definition(Hydrator::class, [
+        $hydArgs = [
             new Reference(MetadataReaderInterface::class),
             new Reference(TypeCasterInterface::class),
             new Reference('sybase_orm.identity_map' . $suffix),
             new Reference('sybase_orm.unit_of_work' . $suffix),
             new Reference(ProxyGenerator::class),
-        ]);
+            null,
+            new Reference('sybase_orm.connection_manager' . $suffix),
+        ];
+        if (class_exists(InheritanceHandler::class)) {
+            $hydArgs[] = new Reference(InheritanceHandler::class);
+        }
+        $hydDef = new Definition(Hydrator::class, $hydArgs);
         $hydDef->addMethodCall('setEntityManager', [new Reference('sybase_orm.entity_manager' . $suffix)]);
         $hydDef->setPublic(false);
         $container->setDefinition('sybase_orm.hydrator' . $suffix, $hydDef);
 
         // 5. UnitOfWork
-        $uowDef = new Definition(UnitOfWork::class, [
+        $uowArgs = [
             new Reference('sybase_orm.connection_manager' . $suffix),
             new Reference(MetadataReaderInterface::class),
             new Reference(DialectInterface::class),
             new Reference(TypeCasterInterface::class),
             new Reference('sybase_orm.identity_map' . $suffix),
             new Reference(HookDispatcher::class),
-        ]);
+        ];
+        if (class_exists(EntityValidator::class)) {
+            $uowArgs[] = new Reference(EntityValidator::class);
+        }
+        if (class_exists(InheritanceHandler::class)) {
+            $uowArgs[] = new Reference(InheritanceHandler::class);
+        }
+        $uowDef = new Definition(UnitOfWork::class, $uowArgs);
         $uowDef->setPublic(false);
         $container->setDefinition('sybase_orm.unit_of_work' . $suffix, $uowDef);
 

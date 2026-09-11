@@ -48,6 +48,8 @@ Estos servicios se registran una vez y son compartidos por todas las conexiones:
 | `TypeCaster` | `TypeCasterInterface` | Conversión de tipos |
 | `MetadataReader` | `MetadataReaderInterface` | Lectura de metadatos de entidades |
 | `HookDispatcher` | — | Despacho de hooks/eventos |
+| `InheritanceHandler` | — | Manejo de estrategias de herencia (TPH, TPT, TPC) |
+| `EntityValidator` | — | Validación de restricciones de columnas en entidades |
 | `ProxyGenerator` | — | Generación de clases proxy |
 | `InstrumentationCollector` | `OrmInstrumentationInterface` | Instrumentación nativa del ORM (dev) |
 | `NullInstrumentation` | `OrmInstrumentationInterface` | No-op en producción |
@@ -61,8 +63,8 @@ Para cada conexión configurada, se registra un conjunto completo de servicios c
 | `sybase_orm.connection_manager.{name}` | `ConnectionManager` | Config, Logger, OrmInstrumentationInterface |
 | `sybase_orm.identity_map.{name}` | `IdentityMap` | — |
 | `sybase_orm.cache_manager.{name}` | `CacheManager` | IdentityMap, RedisCacheAdapter, Logger, failure_threshold, cooldown_seconds |
-| `sybase_orm.hydrator.{name}` | `Hydrator` | MetadataReader, TypeCaster, IdentityMap, UoW, ProxyGenerator |
-| `sybase_orm.unit_of_work.{name}` | `UnitOfWork` | ConnectionManager, MetadataReader, Dialect, TypeCaster, IdentityMap, HookDispatcher |
+| `sybase_orm.hydrator.{name}` | `Hydrator` | MetadataReader, TypeCaster, IdentityMap, UoW, ProxyGenerator, ConnectionManager, InheritanceHandler |
+| `sybase_orm.unit_of_work.{name}` | `UnitOfWork` | ConnectionManager, MetadataReader, Dialect, TypeCaster, IdentityMap, HookDispatcher, EntityValidator, InheritanceHandler |
 | `sybase_orm.entity_manager.{name}` | `EntityManager` | ConnectionManager, MetadataReader, Dialect, TypeCaster, Hydrator, UoW, IdentityMap, HookDispatcher, CacheManager, Logger |
 
 ### Servicios Redis (cuando cache.adapter = 'redis')
